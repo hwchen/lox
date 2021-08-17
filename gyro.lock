@@ -1,0 +1,2 @@
+pkg default Hejsil clap 0.4.1
+github Hejsil zig-clap zig-master clap.zig c5fb22823a9a4a699acaefc1e9febfee0b8e506c
