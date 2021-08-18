@@ -30,56 +30,66 @@ pub fn main() anyerror!void {
         try clap.help(std.io.getStdOut().writer(), &params);
     }
 
+    var lox = Lox{};
+
     if (args.positionals().len == 0) {
-        try runPrompt(alloc);
+        try lox.runPrompt(alloc);
     } else if (args.positionals().len == 1) {
-        try runFile(alloc, args.positionals()[0]);
+        try lox.runFile(alloc, args.positionals()[0]);
     } else {
         return error.IncorrectArg;
     }
 }
 
-fn runFile(alloc: *Allocator, path: []const u8) !void {
-    const file = try std.fs.cwd().openFile(path, .{ .read = true });
-    defer file.close();
+/// Lox is main entry point, and holds state for a session
+const Lox = struct {
+    hadError: bool = false,
 
-    const max_size = 1024 * 8;
-    const bytes = try file.readToEndAlloc(alloc, max_size);
-    defer alloc.free(bytes);
+    fn runFile(self: *Lox, alloc: *Allocator, path: []const u8) !void {
+        _ = self;
+        const file = try std.fs.cwd().openFile(path, .{ .read = true });
+        defer file.close();
 
-    return run(alloc, bytes);
-}
+        const max_size = 1024 * 8;
+        const bytes = try file.readToEndAlloc(alloc, max_size);
+        defer alloc.free(bytes);
 
-fn runPrompt(alloc: *Allocator) !void {
-    var buf: [1024]u8 = undefined;
-    var stdin = io.getStdIn().reader();
-    var rdr = io.bufferedReader(stdin).reader();
-    var stdout = io.getStdOut().writer();
-    var stdout_buf = io.bufferedWriter(stdout);
-    var wtr = stdout_buf.writer();
+        return self.run(alloc, bytes);
+    }
 
-    while (true) {
-        _ = try wtr.write("> ");
-        try stdout_buf.flush();
+    fn runPrompt(self: *Lox, alloc: *Allocator) !void {
+        _ = self;
+        var buf: [1024]u8 = undefined;
+        var stdin = io.getStdIn().reader();
+        var rdr = io.bufferedReader(stdin).reader();
+        var stdout = io.getStdOut().writer();
+        var stdout_buf = io.bufferedWriter(stdout);
+        var wtr = stdout_buf.writer();
 
-        if (try rdr.readUntilDelimiterOrEof(&buf, '\n')) |line| {
-            try run(alloc, line);
-        } else {
-            // EOF
-            break;
+        while (true) {
+            _ = try wtr.write("> ");
+            try stdout_buf.flush();
+
+            if (try rdr.readUntilDelimiterOrEof(&buf, '\n')) |line| {
+                try self.run(alloc, line);
+            } else {
+                // EOF
+                break;
+            }
         }
     }
-}
 
-fn run(alloc: *Allocator, bytes: []const u8) !void {
-    var scanner = Scanner{ .alloc = alloc, .bytes = bytes };
-    const tokens = scanner.scanTokens();
-    defer tokens.deinit();
+    fn run(self: *Lox, alloc: *Allocator, bytes: []const u8) !void {
+        _ = self;
+        var scanner = Scanner{ .alloc = alloc, .bytes = bytes };
+        const tokens = scanner.scanTokens();
+        defer tokens.deinit();
 
-    for (tokens.items) |token| {
-        std.log.info("{}", .{token});
+        for (tokens.items) |token| {
+            std.log.info("{}", .{token});
+        }
     }
-}
+};
 
 const Scanner = struct {
     alloc: *Allocator,
