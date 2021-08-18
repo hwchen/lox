@@ -1,8 +1,9 @@
 const clap = @import("clap");
+const scan = @import("./scanner.zig");
 const std = @import("std");
-const tok = @import("./token.zig");
-const Token = tok.Token;
-const TokenType = tok.TokenType;
+
+const Scanner = scan.Scanner;
+const ScannerError = scan.ScannerError;
 const io = std.io;
 const fs = std.fs;
 const Allocator = std.mem.Allocator;
@@ -94,7 +95,7 @@ const Lox = struct {
 
     fn run(self: *Lox, alloc: *Allocator, bytes: []const u8, lox_err: ?*LoxError) !void {
         _ = self;
-        var scanner = Scanner{ .alloc = alloc, .bytes = bytes };
+        var scanner = Scanner{ .alloc = alloc, .source = bytes };
         var scanner_err: ?*ScannerError = null;
 
         const tokens = scanner.scanTokens(scanner_err);
@@ -127,29 +128,5 @@ const LoxError = union(enum) {
         switch (self.*) {
             .scanner => |*err| err.deinit(),
         }
-    }
-};
-
-const ScannerError = struct {
-    line: u64,
-    message: ArrayList(u8),
-
-    fn write_report(self: ScannerError) void {
-        std.debug.print("[line {d}] Error: {s}", .{ self.line, self.message });
-    }
-
-    fn deinit(self: *ScannerError) void {
-        self.message.deinit();
-    }
-};
-
-const Scanner = struct {
-    alloc: *Allocator,
-    bytes: []const u8,
-
-    fn scanTokens(self: *Scanner, err: ?*ScannerError) ArrayList(Token) {
-        _ = self;
-        _ = err;
-        return ArrayList(Token).init(self.alloc);
     }
 };
