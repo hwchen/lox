@@ -39,7 +39,7 @@ pub fn main() anyerror!void {
 }
 
 fn runFile(alloc: *Allocator, path: []const u8) !void {
-    const file = try std.fs.openFileAbsolute(path, .{ .read = true });
+    const file = try std.fs.cwd().openFile(path, .{ .read = true });
     defer file.close();
 
     const max_size = 1024 * 8;
@@ -64,6 +64,7 @@ fn runPrompt() !void {
         if (try rdr.readUntilDelimiterOrEof(&buf, '\n')) |line| {
             try run(line);
         } else {
+            // EOF
             break;
         }
     }
