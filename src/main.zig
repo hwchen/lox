@@ -103,6 +103,7 @@ const Lox = struct {
             return;
         }
 
+        // TODO this printing is temporary; once we know the return value of `run`, we should remove this.
         for (tokens.items) |token| {
             std.log.info("{}", .{token});
         }
