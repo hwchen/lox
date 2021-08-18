@@ -1,5 +1,8 @@
 const clap = @import("clap");
 const std = @import("std");
+const tok = @import("./token.zig");
+const Token = tok.Token;
+const TokenType = tok.TokenType;
 const io = std.io;
 const fs = std.fs;
 const Allocator = std.mem.Allocator;
@@ -105,7 +108,8 @@ const Lox = struct {
 
         // TODO this printing is temporary; once we know the return value of `run`, we should remove this.
         for (tokens.items) |token| {
-            std.log.info("{}", .{token});
+            var buf = ArrayList(u8).init(alloc);
+            std.log.info("{s}", .{token.write_debug(&buf, bytes)});
         }
     }
 };
@@ -149,5 +153,3 @@ const Scanner = struct {
         return ArrayList(Token).init(self.alloc);
     }
 };
-
-const Token = union(enum) { one_token };
