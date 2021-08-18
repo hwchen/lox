@@ -3,6 +3,7 @@ const std = @import("std");
 const io = std.io;
 const fs = std.fs;
 const Allocator = std.mem.Allocator;
+const ArrayList = std.ArrayList;
 
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -30,7 +31,7 @@ pub fn main() anyerror!void {
     }
 
     if (args.positionals().len == 0) {
-        try runPrompt();
+        try runPrompt(alloc);
     } else if (args.positionals().len == 1) {
         try runFile(alloc, args.positionals()[0]);
     } else {
@@ -46,10 +47,10 @@ fn runFile(alloc: *Allocator, path: []const u8) !void {
     const bytes = try file.readToEndAlloc(alloc, max_size);
     defer alloc.free(bytes);
 
-    return run(bytes);
+    return run(alloc, bytes);
 }
 
-fn runPrompt() !void {
+fn runPrompt(alloc: *Allocator) !void {
     var buf: [1024]u8 = undefined;
     var stdin = io.getStdIn().reader();
     var rdr = io.bufferedReader(stdin).reader();
@@ -62,7 +63,7 @@ fn runPrompt() !void {
         try stdout_buf.flush();
 
         if (try rdr.readUntilDelimiterOrEof(&buf, '\n')) |line| {
-            try run(line);
+            try run(alloc, line);
         } else {
             // EOF
             break;
@@ -70,6 +71,24 @@ fn runPrompt() !void {
     }
 }
 
-fn run(bytes: []const u8) !void {
-    _ = bytes;
+fn run(alloc: *Allocator, bytes: []const u8) !void {
+    var scanner = Scanner{ .alloc = alloc, .bytes = bytes };
+    const tokens = scanner.scanTokens();
+    defer tokens.deinit();
+
+    for (tokens.items) |token| {
+        std.log.info("{}", .{token});
+    }
 }
+
+const Scanner = struct {
+    alloc: *Allocator,
+    bytes: []const u8,
+
+    fn scanTokens(self: *Scanner) ArrayList(Token) {
+        _ = self;
+        return ArrayList(Token).init(self.alloc);
+    }
+};
+
+const Token = union(enum) { one_token };
