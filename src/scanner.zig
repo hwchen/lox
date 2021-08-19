@@ -11,7 +11,7 @@ pub const ScannerError = struct {
     message: ArrayList(u8),
 
     pub fn write_report(self: ScannerError) void {
-        std.debug.print("[line {d}] Error: {s}", .{ self.line, self.message });
+        std.debug.print("[line {d}] Error: {s}\n", .{ self.line, self.message.items });
     }
 
     pub fn deinit(self: *ScannerError) void {
