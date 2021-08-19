@@ -112,7 +112,9 @@ const Lox = struct {
         // TODO this printing is temporary; once we know the return value of `run`, we should remove this.
         for (scan_res.tokens.items) |token| {
             var buf = ArrayList(u8).init(alloc);
-            std.log.info("{s}", .{token.write_debug(&buf, bytes)});
+            defer buf.deinit();
+            try token.write_debug(&buf, bytes);
+            std.log.info("{s}", .{buf.items});
         }
 
         return LoxResult.ok;

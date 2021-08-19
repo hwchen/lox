@@ -55,6 +55,6 @@ pub const Token = struct {
 
     pub fn write_debug(self: Token, writer: anytype, bytes: []const u8) !void {
         var wtr = writer.writer();
-        try wtr.print("type {} + {s}", .{ self.token_type, bytes[self.start .. self.start + self.length] });
+        try wtr.print("{} {s}", .{ self.token_type, bytes[self.start .. self.start + self.length] });
     }
 };
