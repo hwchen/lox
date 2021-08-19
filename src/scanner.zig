@@ -49,6 +49,7 @@ pub const Scanner = struct {
     const ScanTokenResult = union(enum) {
         token: Token,
         err: ScannerError,
+        skip,
     };
 
     const ScanTokensResult = struct {
@@ -66,6 +67,7 @@ pub const Scanner = struct {
             switch (scan_res) {
                 .token => |token| try tokens.append(token),
                 .err => |err| try errors.append(err),
+                .skip => continue,
             }
         }
 
@@ -96,6 +98,18 @@ pub const Scanner = struct {
             '<' => self.makeToken(if (self.match('=')) .less_equal else .less),
             '>' => self.makeToken(if (self.match('=')) .greater_equal else .greater),
 
+            '/' => blk: {
+                if (self.match('/')) {
+                    // comment
+                    while (!self.isAtEnd() and self.peek() != '\n') {
+                        _ = self.advance();
+                    }
+                    break :blk self.makeSkip();
+                } else {
+                    break :blk self.makeToken(.slash);
+                }
+            },
+
             else => self.makeError(c),
         };
     }
@@ -112,6 +126,11 @@ pub const Scanner = struct {
 
         self.curr += 1;
         return true;
+    }
+
+    /// Like advance, but does not consume
+    fn peek(self: *Scanner) u8 {
+        return self.source[self.curr];
     }
 
     fn makeToken(self: *Scanner, token_type: TokenType) ScanTokenResult {
@@ -131,6 +150,11 @@ pub const Scanner = struct {
             .line = self.line(),
             .message = buf,
         } };
+    }
+
+    fn makeSkip(self: Scanner) ScanTokenResult {
+        _ = self;
+        return ScanTokenResult.skip;
     }
 
     // To be used only for error reporting
