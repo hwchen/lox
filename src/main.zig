@@ -3,7 +3,7 @@ const scan = @import("./scanner.zig");
 const std = @import("std");
 
 const Scanner = scan.Scanner;
-const ScannerError = scan.ScannerError;
+const ScannerErrors = scan.ScannerErrors;
 const io = std.io;
 const fs = std.fs;
 const Allocator = std.mem.Allocator;
@@ -57,12 +57,13 @@ const Lox = struct {
         const bytes = try file.readToEndAlloc(alloc, max_size);
         defer alloc.free(bytes);
 
-        var lox_err: ?*LoxError = null;
-        try self.run(alloc, bytes, lox_err);
-        if (lox_err) |err| {
-            err.write_report();
-            err.deinit();
-            std.os.exit(65);
+        var lox_res = try self.run(alloc, bytes);
+        switch (lox_res) {
+            .ok => {},
+            .err => |*err| {
+                err.write_report();
+                err.deinit();
+            },
         }
     }
 
@@ -80,11 +81,13 @@ const Lox = struct {
             try stdout_buf.flush();
 
             if (try rdr.readUntilDelimiterOrEof(&buf, '\n')) |line| {
-                var lox_err: ?*LoxError = null;
-                try self.run(alloc, line, lox_err);
-                if (lox_err) |err| {
-                    err.write_report();
-                    err.deinit();
+                var lox_res = try self.run(alloc, line);
+                switch (lox_res) {
+                    .ok => {},
+                    .err => |*err| {
+                        err.write_report();
+                        err.deinit();
+                    },
                 }
             } else {
                 // EOF
@@ -93,30 +96,36 @@ const Lox = struct {
         }
     }
 
-    fn run(self: *Lox, alloc: *Allocator, bytes: []const u8, lox_err: ?*LoxError) !void {
+    fn run(self: *Lox, alloc: *Allocator, bytes: []const u8) !LoxResult {
         _ = self;
         var scanner = Scanner{ .alloc = alloc, .source = bytes };
-        var scanner_err: ?*ScannerError = null;
 
-        const tokens = scanner.scanTokens(scanner_err);
-        defer tokens.deinit();
+        const scan_res = try scanner.scanTokens();
+        defer scan_res.tokens.deinit();
 
-        if (scanner_err) |err| {
-            // Is this correct, is the error moved?
-            lox_err.?.* = LoxError{ .scanner = err.* };
-            return;
+        if (!scan_res.errors.isEmpty()) {
+            return LoxResult{ .err = LoxError{
+                .scanner = scan_res.errors,
+            } };
         }
 
         // TODO this printing is temporary; once we know the return value of `run`, we should remove this.
-        for (tokens.items) |token| {
+        for (scan_res.tokens.items) |token| {
             var buf = ArrayList(u8).init(alloc);
             std.log.info("{s}", .{token.write_debug(&buf, bytes)});
         }
+
+        return LoxResult.ok;
     }
 };
 
+const LoxResult = union(enum) {
+    ok,
+    err: LoxError,
+};
+
 const LoxError = union(enum) {
-    scanner: ScannerError,
+    scanner: ScannerErrors,
 
     fn write_report(self: LoxError) void {
         switch (self) {
