@@ -80,16 +80,22 @@ pub const Scanner = struct {
     pub fn scanToken(self: *Scanner) ScanTokenResult {
         const c = self.advance();
         return switch (c) {
-            '(' => self.makeToken(TokenType.left_paren),
-            ')' => self.makeToken(TokenType.right_paren),
-            '{' => self.makeToken(TokenType.left_brace),
-            '}' => self.makeToken(TokenType.right_brace),
-            ',' => self.makeToken(TokenType.comma),
-            '.' => self.makeToken(TokenType.dot),
-            '-' => self.makeToken(TokenType.minus),
-            '+' => self.makeToken(TokenType.plus),
-            ';' => self.makeToken(TokenType.semicolon),
-            '*' => self.makeToken(TokenType.star),
+            '(' => self.makeToken(.left_paren),
+            ')' => self.makeToken(.right_paren),
+            '{' => self.makeToken(.left_brace),
+            '}' => self.makeToken(.right_brace),
+            ',' => self.makeToken(.comma),
+            '.' => self.makeToken(.dot),
+            '-' => self.makeToken(.minus),
+            '+' => self.makeToken(.plus),
+            ';' => self.makeToken(.semicolon),
+            '*' => self.makeToken(.star),
+
+            '!' => self.makeToken(if (self.match('=')) .bang_equal else .bang),
+            '=' => self.makeToken(if (self.match('=')) .equal_equal else .equal),
+            '<' => self.makeToken(if (self.match('=')) .less_equal else .less),
+            '>' => self.makeToken(if (self.match('=')) .greater_equal else .greater),
+
             else => self.makeError(c),
         };
     }
@@ -98,6 +104,14 @@ pub const Scanner = struct {
         const res = self.source[self.curr];
         self.curr += 1;
         return res;
+    }
+
+    fn match(self: *Scanner, expected: u8) bool {
+        if (self.isAtEnd()) return false;
+        if (self.source[self.curr] != expected) return false;
+
+        self.curr += 1;
+        return true;
     }
 
     fn makeToken(self: *Scanner, token_type: TokenType) ScanTokenResult {
