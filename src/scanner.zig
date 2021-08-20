@@ -106,6 +106,8 @@ pub const Scanner = struct {
 
             '0'...'9' => self.parseNumber(),
 
+            'a'...'z', 'A'...'Z', '_' => self.parseIdentifier(),
+
             else => self.unexpectedCharacterError(c),
         };
     }
@@ -229,4 +231,19 @@ pub const Scanner = struct {
 
         return self.makeToken(.number);
     }
+
+    fn parseIdentifier(self: *Scanner) ScanTokenResult {
+        while (isIdentChar(self.peek())) {
+            _ = self.advance();
+        }
+
+        return self.makeToken(.identifier);
+    }
 };
+
+fn isIdentChar(c: u8) bool {
+    return switch (c) {
+        '0'...'9', 'a'...'z', 'A'...'Z', '_' => true,
+        else => false,
+    };
+}
