@@ -104,6 +104,8 @@ pub const Scanner = struct {
 
             '"' => self.parseString(),
 
+            '0'...'9' => self.parseNumber(),
+
             else => self.unexpectedCharacterError(c),
         };
     }
@@ -123,8 +125,18 @@ pub const Scanner = struct {
     }
 
     /// Like advance, but does not consume
-    fn peek(self: *Scanner) u8 {
+    fn peek(self: Scanner) u8 {
+        if (self.isAtEnd()) return 0;
         return self.source[self.curr];
+    }
+
+    fn peek2(self: Scanner) u8 {
+        const idx = self.curr + 1;
+
+        // idx out of bounds
+        if (idx >= self.source.len) return 0;
+
+        return self.source[idx];
     }
 
     fn makeToken(self: *Scanner, token_type: TokenType) ScanTokenResult {
@@ -168,7 +180,7 @@ pub const Scanner = struct {
     }
 
     fn parseComment(self: *Scanner) ScanTokenResult {
-        while (!self.isAtEnd() and self.peek() != '\n') {
+        while (self.peek() != '\n' and !self.isAtEnd()) {
             _ = self.advance();
         }
         return self.makeSkip();
@@ -176,7 +188,7 @@ pub const Scanner = struct {
 
     /// Doesn't handle escaped double quotes
     fn parseString(self: *Scanner) ScanTokenResult {
-        while (!self.isAtEnd() and self.peek() != '"') {
+        while (self.peek() != '"' and !self.isAtEnd()) {
             _ = self.advance();
         }
 
@@ -198,5 +210,23 @@ pub const Scanner = struct {
             .start = self.start + 1,
             .length = self.curr - self.start - 2,
         } };
+    }
+
+    fn parseNumber(self: *Scanner) ScanTokenResult {
+        const isDigit = std.ascii.isDigit;
+
+        while (isDigit(self.peek())) {
+            _ = self.advance();
+        }
+
+        // check for one decimal point
+        if (self.peek() == '.' and isDigit(self.peek2())) {
+            _ = self.advance();
+            while (isDigit(self.peek())) {
+                _ = self.advance();
+            }
+        }
+
+        return self.makeToken(.number);
     }
 };
