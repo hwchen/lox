@@ -110,6 +110,8 @@ pub const Scanner = struct {
                 }
             },
 
+            ' ', '\r', '\n', '\t' => self.makeSkip(),
+
             else => self.makeError(c),
         };
     }
