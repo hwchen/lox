@@ -237,6 +237,10 @@ pub const Scanner = struct {
             _ = self.advance();
         }
 
+        if (getKeyword(self.source[self.start..self.curr])) |keyword| {
+            return self.makeToken(keyword);
+        }
+
         return self.makeToken(.identifier);
     }
 };
@@ -246,4 +250,46 @@ fn isIdentChar(c: u8) bool {
         '0'...'9', 'a'...'z', 'A'...'Z', '_' => true,
         else => false,
     };
+}
+
+// from zig's stringToEnum. ComptimeStringMap is same strategy used for keywords in zig.
+// https://github.com/ziglang/zig/pull/5359#issuecomment-634171853
+//
+// See usage here https://github.com/ziglang/zig/blob/6a5094872f10acc629543cc7f10533b438d0283a/lib/std/meta.zig#L62
+//
+// A subset of TokenType is keywords.
+fn getKeyword(ident: []const u8) ?TokenType {
+    const kvs = comptime build_kvs: {
+        // This list should be kept in sync with the enum. It's manual, but done very rarely
+        const keywords = [_]TokenType{
+            .@"and",
+            .@"class",
+            .@"else",
+            .@"false",
+            .@"fun",
+            .@"for",
+            .@"if",
+            .@"nil",
+            .@"or",
+            .@"print",
+            .@"return",
+            .@"super",
+            .@"this",
+            .@"true",
+            .@"var",
+            .@"while",
+        };
+
+        const KV = struct {
+            @"0": []const u8,
+            @"1": TokenType,
+        };
+        var kvs_array: [keywords.len]KV = undefined;
+        for (keywords) |keyword, i| {
+            kvs_array[i] = KV{ .@"0" = std.meta.tagName(keyword), .@"1" = keyword };
+        }
+        break :build_kvs kvs_array[0..];
+    };
+    const map = comptime std.ComptimeStringMap(TokenType, kvs);
+    return map.get(ident);
 }

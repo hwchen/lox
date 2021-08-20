@@ -28,22 +28,22 @@ pub const TokenType = enum {
     number,
 
     // keywords,
-    AND,
-    CLASS,
-    ELSE,
-    FALSE,
-    FUN,
-    FOR,
-    IF,
-    NIL,
-    OR,
-    PRINT,
-    RETURN,
-    SUPER,
-    THIS,
-    TRUE,
-    VAR,
-    WHILE,
+    @"and",
+    @"class",
+    @"else",
+    @"false",
+    @"fun",
+    @"for",
+    @"if",
+    @"nil",
+    @"or",
+    @"print",
+    @"return",
+    @"super",
+    @"this",
+    @"true",
+    @"var",
+    @"while",
 
     EOF,
 };
@@ -55,6 +55,6 @@ pub const Token = struct {
 
     pub fn write_debug(self: Token, writer: anytype, bytes: []const u8) !void {
         var wtr = writer.writer();
-        try wtr.print("{} {s} at {d}", .{ self.token_type, bytes[self.start .. self.start + self.length], self.start });
+        try wtr.print("{} \"{s}\" at {d}", .{ self.token_type, bytes[self.start .. self.start + self.length], self.start });
     }
 };
