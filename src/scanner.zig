@@ -98,21 +98,13 @@ pub const Scanner = struct {
             '<' => self.makeToken(if (self.match('=')) .less_equal else .less),
             '>' => self.makeToken(if (self.match('=')) .greater_equal else .greater),
 
-            '/' => blk: {
-                if (self.match('/')) {
-                    // comment
-                    while (!self.isAtEnd() and self.peek() != '\n') {
-                        _ = self.advance();
-                    }
-                    break :blk self.makeSkip();
-                } else {
-                    break :blk self.makeToken(.slash);
-                }
-            },
+            '/' => if (self.match('/')) self.parseComment() else self.makeToken(.slash),
 
             ' ', '\r', '\n', '\t' => self.makeSkip(),
 
-            else => self.makeError(c),
+            '"' => self.parseString(),
+
+            else => self.unexpectedCharacterError(c),
         };
     }
 
@@ -143,7 +135,7 @@ pub const Scanner = struct {
         } };
     }
 
-    fn makeError(self: *Scanner, c: u8) ScanTokenResult {
+    fn unexpectedCharacterError(self: *Scanner, c: u8) ScanTokenResult {
         var buf = ArrayList(u8).init(self.alloc);
         // if there's an error trying to make error msg, just exit
         buf.writer().print("Unexpected character {c}", .{c}) catch unreachable;
@@ -173,5 +165,38 @@ pub const Scanner = struct {
 
     fn isAtEnd(self: Scanner) bool {
         return self.curr >= self.source.len;
+    }
+
+    fn parseComment(self: *Scanner) ScanTokenResult {
+        while (!self.isAtEnd() and self.peek() != '\n') {
+            _ = self.advance();
+        }
+        return self.makeSkip();
+    }
+
+    /// Doesn't handle escaped double quotes
+    fn parseString(self: *Scanner) ScanTokenResult {
+        while (!self.isAtEnd() and self.peek() != '"') {
+            _ = self.advance();
+        }
+
+        if (self.isAtEnd()) {
+            var buf = ArrayList(u8).init(self.alloc);
+            buf.writer().print("Unterminated string", .{}) catch unreachable;
+
+            return ScanTokenResult{ .err = ScannerError{
+                .line = self.line(),
+                .message = buf,
+            } };
+        }
+
+        // advance past last double-quote
+        _ = self.advance();
+
+        return ScanTokenResult{ .token = Token{
+            .token_type = .string,
+            .start = self.start + 1,
+            .length = self.curr - self.start - 2,
+        } };
     }
 };
