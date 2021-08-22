@@ -71,6 +71,12 @@ pub const Scanner = struct {
             }
         }
 
+        try tokens.append(Token{
+            .token_type = .EOF,
+            .start = self.source.len,
+            .len = self.source.len,
+        });
+
         return ScanTokensResult{
             .tokens = tokens,
             .errors = ScannerErrors{
@@ -147,7 +153,7 @@ pub const Scanner = struct {
         return ScanTokenResult{ .token = Token{
             .token_type = token_type,
             .start = self.start,
-            .length = self.curr - self.start,
+            .len = self.curr - self.start,
         } };
     }
 
@@ -212,7 +218,7 @@ pub const Scanner = struct {
         return ScanTokenResult{ .token = Token{
             .token_type = .string,
             .start = self.start + 1,
-            .length = self.curr - self.start - 2,
+            .len = self.curr - self.start - 2,
         } };
     }
 

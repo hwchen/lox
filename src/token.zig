@@ -51,10 +51,14 @@ pub const TokenType = enum {
 pub const Token = struct {
     token_type: TokenType,
     start: u64,
-    length: u64,
+    len: u64,
 
     pub fn write_debug(self: Token, writer: anytype, bytes: []const u8) !void {
         var wtr = writer.writer();
-        try wtr.print("{} \"{s}\" at {d}", .{ self.token_type, bytes[self.start .. self.start + self.length], self.start });
+        if (self.start < bytes.len) {
+            try wtr.print("{} \"{s}\" at {d}", .{ self.token_type, bytes[self.start .. self.start + self.len], self.start });
+        } else {
+            try wtr.print("{}", .{self.token_type});
+        }
     }
 };

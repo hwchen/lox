@@ -1,11 +1,42 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
+
+const tok = @import("./token.zig");
+const Token = tok.Token;
+const TokenType = tok.TokenType;
 
 /// temporarily just an Expr
 pub const Program = struct {
-    expr: Expr,
+    alloc: *Allocator,
+    expr: *Expr,
+
+    pub fn print_debug(self: Program, source: []const u8) void {
+        var printer = PrintAst{ .source = source };
+        printer.print(self);
+    }
+
+    pub fn deinit(self: *Program) void {
+        self.expr.deinit(self.alloc);
+        self.alloc.destroy(self.expr);
+    }
 };
 
-pub const Expr = union(enum) { literal: Literal, unary: Unary, binary: Binary, grouping: Grouping };
+pub const Expr = union(enum) {
+    literal: Literal,
+    unary: Unary,
+    binary: Binary,
+    grouping: Grouping,
+
+    /// To be called only from root of AST
+    fn deinit(self: *Expr, alloc: *Allocator) void {
+        switch (self.*) {
+            .unary => |*n| n.deinit(alloc),
+            .binary => |*n| n.deinit(alloc),
+            .grouping => |*n| n.deinit(alloc),
+            else => {},
+        }
+    }
+};
 
 pub const Literal = union(enum) {
     number: Span,
@@ -16,25 +47,53 @@ pub const Literal = union(enum) {
 
     /// Only convert on program execution
     const Span = struct {
-        start = u64,
+        start: u64,
         len: u64,
+
+        const Self = @This();
+
+        pub fn slice(self: Self, bytes: []const u8) []const u8 {
+            return bytes[self.start .. self.start + self.len];
+        }
     };
 };
 
 pub const Unary = struct {
     op: UnaryOp,
-    expr: *const Expr,
+    expr: *Expr,
+
+    /// To be called only from root of AST
+    fn deinit(self: *Unary, alloc: *Allocator) void {
+        self.expr.deinit(alloc);
+        alloc.destroy(self.expr);
+    }
 };
 
 pub const UnaryOp = enum {
     minus,
     bang,
+
+    pub fn from_token(t: Token) UnaryOp {
+        return switch (t.token_type) {
+            TokenType.minus => .minus,
+            TokenType.bang => .bang,
+            else => std.debug.panic("logic bug in caller", .{}),
+        };
+    }
 };
 
 pub const Binary = struct {
-    left: *const Expr,
+    left: *Expr,
     op: BinaryOp,
-    right: *const Expr,
+    right: *Expr,
+
+    /// To be called only from root of AST
+    fn deinit(self: *Binary, alloc: *Allocator) void {
+        self.left.deinit(alloc);
+        self.right.deinit(alloc);
+        alloc.destroy(self.left);
+        alloc.destroy(self.right);
+    }
 };
 
 pub const BinaryOp = enum {
@@ -48,18 +107,44 @@ pub const BinaryOp = enum {
     minus,
     star,
     slash,
+
+    pub fn from_token(t: Token) BinaryOp {
+        return switch (t.token_type) {
+            TokenType.equal_equal => .equal_equal,
+            TokenType.bang_equal => .bang_equal,
+            TokenType.less => .less,
+            TokenType.less_equal => .less_equal,
+            TokenType.greater => .greater,
+            TokenType.greater_equal => .greater_equal,
+            TokenType.plus => .plus,
+            TokenType.minus => .minus,
+            TokenType.star => .star,
+            TokenType.slash => .slash,
+            else => std.debug.panic("logic bug in caller", .{}),
+        };
+    }
 };
 
 pub const Grouping = struct {
-    expr: *const Expr,
+    expr: *Expr,
+
+    /// To be called only from root of AST
+    fn deinit(self: *Grouping, alloc: *Allocator) void {
+        self.expr.deinit(alloc);
+        alloc.destroy(self.expr);
+    }
 };
 
 /// Visitor
 const PrintAst = struct {
+    source: []const u8,
+
     const Self = @This();
 
-    fn print(self: *Self, expr: Expr) void {
-        self.visitExpr(expr);
+    fn print(self: *Self, program: Program) void {
+        std.debug.print("ast: ", .{});
+        self.visitExpr(program.expr.*);
+        std.debug.print("\n", .{});
     }
 
     fn visitExpr(self: *Self, expr: Expr) void {
@@ -74,8 +159,7 @@ const PrintAst = struct {
     fn visitLiteral(self: *Self, literal: Literal) void {
         _ = self;
         switch (literal) {
-            .number => |n| std.debug.print("{d}", .{n}),
-            .string => |s| std.debug.print("{s}", .{s}),
+            .number, .string => |span| std.debug.print("{s} ", .{span.slice(self.source)}),
             .@"true" => std.debug.print("true", .{}),
             .@"false" => std.debug.print("false", .{}),
             .nil => std.debug.print("nil", .{}),
@@ -103,15 +187,3 @@ const PrintAst = struct {
         std.debug.print(") ", .{});
     }
 };
-
-/// for test purposes only, delete when no longer needed.
-fn testPrintAst() void {
-    const expr = Expr{ .binary = Binary{
-        .left = &Expr{ .unary = Unary{ .op = UnaryOp.minus, .expr = &Expr{ .literal = Literal{ .number = 123 } } } },
-        .op = BinaryOp.star,
-        .right = &Expr{ .grouping = Grouping{ .expr = &Expr{ .literal = Literal{ .number = 46.67 } } } },
-    } };
-
-    var printer = PrintAst{};
-    printer.print(expr);
-}

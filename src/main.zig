@@ -1,9 +1,12 @@
+const std = @import("std");
 const clap = @import("clap");
 const scan = @import("./scanner.zig");
-const std = @import("std");
+const parse = @import("./parser.zig");
 
 const Scanner = scan.Scanner;
 const ScannerErrors = scan.ScannerErrors;
+const Parser = parse.Parser;
+
 const io = std.io;
 const fs = std.fs;
 const Allocator = std.mem.Allocator;
@@ -109,13 +112,23 @@ const Lox = struct {
             } };
         }
 
-        // TODO this printing is temporary; once we know the return value of `run`, we should remove this.
+        // debug print tokens
         for (scan_res.tokens.items) |token| {
             var buf = ArrayList(u8).init(alloc);
             defer buf.deinit();
             try token.write_debug(&buf, bytes);
             std.log.info("{s}", .{buf.items});
         }
+
+        var parser = Parser{
+            .alloc = alloc,
+            .source = bytes,
+            .tokens = scan_res.tokens.items,
+        };
+        var ast = try parser.parseProgram();
+        defer ast.deinit();
+
+        ast.print_debug(bytes);
 
         return LoxResult.ok;
     }
