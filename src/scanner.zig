@@ -112,12 +112,14 @@ pub const Scanner = struct {
         };
     }
 
+    // consume and more to next token
     fn advance(self: *Scanner) u8 {
         const res = self.source[self.curr];
         self.curr += 1;
         return res;
     }
 
+    // consumes if matches
     fn match(self: *Scanner, expected: u8) bool {
         if (self.isAtEnd()) return false;
         if (self.source[self.curr] != expected) return false;

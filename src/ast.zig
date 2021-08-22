@@ -1,13 +1,24 @@
 const std = @import("std");
 
+/// temporarily just an Expr
+pub const Program = struct {
+    expr: Expr,
+};
+
 pub const Expr = union(enum) { literal: Literal, unary: Unary, binary: Binary, grouping: Grouping };
 
 pub const Literal = union(enum) {
-    number: f64,
-    string: []const u8,
+    number: Span,
+    string: Span,
     @"true",
     @"false",
     nil,
+
+    /// Only convert on program execution
+    const Span = struct {
+        start = u64,
+        len: u64,
+    };
 };
 
 pub const Unary = struct {
@@ -93,7 +104,8 @@ const PrintAst = struct {
     }
 };
 
-pub fn testPrintAst() void {
+/// for test purposes only, delete when no longer needed.
+fn testPrintAst() void {
     const expr = Expr{ .binary = Binary{
         .left = &Expr{ .unary = Unary{ .op = UnaryOp.minus, .expr = &Expr{ .literal = Literal{ .number = 123 } } } },
         .op = BinaryOp.star,
