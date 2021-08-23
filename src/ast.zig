@@ -163,7 +163,8 @@ const PrintAst = struct {
     fn visitLiteral(self: *Self, literal: Literal) void {
         _ = self;
         switch (literal) {
-            .number, .string => |span| std.debug.print("{s} ", .{span.slice(self.source)}),
+            .number => |span| std.debug.print("{s} ", .{span.slice(self.source)}),
+            .string => |span| std.debug.print("\"{s}\" ", .{span.slice(self.source)}),
             .@"true" => std.debug.print("true", .{}),
             .@"false" => std.debug.print("false", .{}),
             .nil => std.debug.print("nil", .{}),

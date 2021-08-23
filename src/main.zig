@@ -2,11 +2,16 @@ const std = @import("std");
 const clap = @import("clap");
 const scan = @import("./scanner.zig");
 const parse = @import("./parser.zig");
+const interpret = @import("./interpreter.zig");
+const value = @import("./value.zig");
 
 const Scanner = scan.Scanner;
 const ScannerErrors = scan.ScannerErrors;
 const Parser = parse.Parser;
 const ParserErrors = parse.Errors;
+const Interpreter = interpret.Interpreter;
+const EvalError = interpret.Error;
+const Value = value.Value;
 
 const io = std.io;
 const fs = std.fs;
@@ -63,7 +68,7 @@ const Lox = struct {
 
         var lox_res = try self.run(alloc, source);
         switch (lox_res) {
-            .ok => {},
+            .ok => |val| std.debug.print("{}\n", .{val}),
             .err => |*err| {
                 err.write_report(source);
                 err.deinit();
@@ -87,7 +92,7 @@ const Lox = struct {
             if (try rdr.readUntilDelimiterOrEof(&buf, '\n')) |line| {
                 var lox_res = try self.run(alloc, line);
                 switch (lox_res) {
-                    .ok => {},
+                    .ok => |val| std.debug.print("{}\n", .{val}),
                     .err => |*err| {
                         err.write_report(line);
                         err.deinit();
@@ -135,31 +140,40 @@ const Lox = struct {
             } };
         }
 
-        return LoxResult.ok;
+        var interpreter = Interpreter{ .alloc = alloc, .source = bytes };
+        var eval_res = try interpreter.evaluate(ast);
+
+        return switch (eval_res) {
+            .ok => |val| LoxResult{ .ok = val },
+            .err => |e| LoxResult{ .err = .{ .eval = e } },
+        };
     }
 };
 
 const LoxResult = union(enum) {
-    ok,
+    ok: Value,
     err: LoxError,
 };
 
 const LoxError = union(enum) {
     scanner: ScannerErrors,
     parser: ParserErrors,
+    eval: EvalError,
 
     fn write_report(self: LoxError, source: []const u8) void {
         switch (self) {
             .scanner => |err| err.write_report(),
             .parser => |err| err.write_report(source),
+            .eval => |err| err.write_report(),
         }
         std.debug.print("\n", .{});
     }
 
     fn deinit(self: *LoxError) void {
         switch (self.*) {
-            .scanner => |*errs| errs.deinit(),
-            .parser => |*errs| errs.deinit(),
+            .scanner => |*err| err.deinit(),
+            .parser => |*err| err.deinit(),
+            .eval => |*err| err.deinit(),
         }
     }
 };
