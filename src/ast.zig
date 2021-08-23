@@ -26,9 +26,12 @@ pub const Expr = union(enum) {
     unary: Unary,
     binary: Binary,
     grouping: Grouping,
+    // a marker so that we don't have to use exceptions
+    // or leave an undefined Expr when parsing and hit an error.
+    invalid,
 
-    /// To be called only from root of AST
-    fn deinit(self: *Expr, alloc: *Allocator) void {
+    /// Can be called directly during failure to parse (i.e. group failing on paren)
+    pub fn deinit(self: *Expr, alloc: *Allocator) void {
         switch (self.*) {
             .unary => |*n| n.deinit(alloc),
             .binary => |*n| n.deinit(alloc),
@@ -153,6 +156,7 @@ const PrintAst = struct {
             .unary => |n| self.visitUnary(n),
             .binary => |n| self.visitBinary(n),
             .grouping => |n| self.visitGrouping(n),
+            .invalid => std.debug.print("invalid", .{}),
         }
     }
 

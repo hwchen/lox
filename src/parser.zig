@@ -29,11 +29,12 @@ pub const Parser = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.errors.deinit();
+        self.errors.errors.deinit();
     }
 
-    pub fn parseProgram(self: *Self) !?Program {
-        var expr = (try self.parseExpr()) orelse return null;
+    /// Always need to return an AST, otherwise memory will be leaked
+    pub fn parseProgram(self: *Self) !Program {
+        var expr = try self.parseExpr();
         return Program{
             .expr = expr,
             // necessary for deinit
@@ -41,19 +42,16 @@ pub const Parser = struct {
         };
     }
 
-    /// Instead of returning ExprResult, we return Optional Expr and send errors up a side-channel (to Parser.errors).
-    /// This is because when building a tree, handling all the ExprResult would be a lot more painful then in Scanner,
-    /// which returns Tokens in a linear way (no recursion).
-    fn parseExpr(self: *Self) !?*Expr {
+    fn parseExpr(self: *Self) !*Expr {
         return try self.parseEquality();
     }
 
-    fn parseEquality(self: *Self) !?*Expr {
-        var expr = (try self.parseComparison()) orelse return null;
+    fn parseEquality(self: *Self) !*Expr {
+        var expr = try self.parseComparison();
 
         while (self.match_any(&[_]TokenType{ .bang_equal, .equal_equal })) {
             const op = ast.BinaryOp.from_token(self.previous());
-            const right = (try self.parseComparison()) orelse return null;
+            const right = try self.parseComparison();
             var new_expr = try self.alloc.create(Expr);
             new_expr.* = Expr{ .binary = .{ .left = expr, .op = op, .right = right } };
             expr = new_expr;
@@ -62,12 +60,12 @@ pub const Parser = struct {
         return expr;
     }
 
-    fn parseComparison(self: *Self) !?*Expr {
-        var expr = (try self.parseTerm()) orelse return null;
+    fn parseComparison(self: *Self) !*Expr {
+        var expr = try self.parseTerm();
 
         while (self.match_any(&[_]TokenType{ .greater, .greater_equal, .less, .less_equal })) {
             const op = ast.BinaryOp.from_token(self.previous());
-            const right = (try self.parseTerm()) orelse return null;
+            const right = try self.parseTerm();
             var new_expr = try self.alloc.create(Expr);
             new_expr.* = Expr{ .binary = .{ .left = expr, .op = op, .right = right } };
             expr = new_expr;
@@ -76,12 +74,12 @@ pub const Parser = struct {
         return expr;
     }
 
-    fn parseTerm(self: *Self) !?*Expr {
-        var expr = (try self.parseFactor()) orelse return null;
+    fn parseTerm(self: *Self) !*Expr {
+        var expr = try self.parseFactor();
 
         while (self.match_any(&[_]TokenType{ .plus, .minus })) {
             const op = ast.BinaryOp.from_token(self.previous());
-            const right = (try self.parseFactor()) orelse return null;
+            const right = try self.parseFactor();
             var new_expr = try self.alloc.create(Expr);
             new_expr.* = Expr{ .binary = .{ .left = expr, .op = op, .right = right } };
             expr = new_expr;
@@ -90,12 +88,12 @@ pub const Parser = struct {
         return expr;
     }
 
-    fn parseFactor(self: *Self) !?*Expr {
-        var expr = (try self.parseUnary()) orelse return null;
+    fn parseFactor(self: *Self) !*Expr {
+        var expr = try self.parseUnary();
 
         while (self.match_any(&[_]TokenType{ .star, .slash })) {
             const op = ast.BinaryOp.from_token(self.previous());
-            const right = (try self.parseUnary()) orelse return null;
+            const right = try self.parseUnary();
             var new_expr = try self.alloc.create(Expr);
             new_expr.* = Expr{ .binary = .{ .left = expr, .op = op, .right = right } };
             expr = new_expr;
@@ -104,10 +102,10 @@ pub const Parser = struct {
         return expr;
     }
 
-    fn parseUnary(self: *Self) std.mem.Allocator.Error!?*Expr {
+    fn parseUnary(self: *Self) std.mem.Allocator.Error!*Expr {
         if (self.match_any(&[_]TokenType{ .bang, .minus })) {
             const op = ast.UnaryOp.from_token(self.previous());
-            var expr = (try self.parseUnary()) orelse return null;
+            var expr = try self.parseUnary();
             var new_expr = try self.alloc.create(Expr);
             new_expr.* = Expr{ .unary = .{ .op = op, .expr = expr } };
             expr = new_expr;
@@ -118,7 +116,7 @@ pub const Parser = struct {
     }
 
     // Error on allocation failure
-    fn parsePrimary(self: *Self) !?*Expr {
+    fn parsePrimary(self: *Self) !*Expr {
         var res = try self.alloc.create(Expr);
 
         if (self.match(.@"false")) {
@@ -150,10 +148,14 @@ pub const Parser = struct {
         }
 
         if (self.match(.left_paren)) {
-            const inner = (try self.parseExpr()) orelse return null;
-            if (try self.consume(.right_paren, "Expected right paren")) |err| {
+            const inner = try self.parseExpr();
+            if (self.consume(.right_paren, "Expected right paren")) |err| {
+                std.debug.print("HIT\n", .{});
                 try self.errors.errors.append(err);
-                return null;
+                inner.deinit(self.alloc);
+                self.alloc.destroy(inner);
+                res.* = Expr.invalid;
+                return res;
             }
             res.* = Expr{ .grouping = .{
                 .expr = inner,
@@ -163,7 +165,8 @@ pub const Parser = struct {
 
         // TODO parse ident, keywords, etc.
         try self.errors.errors.append(Error{ .token = self.peek(), .msg = "Expected expression" });
-        return null;
+        res.* = Expr.invalid;
+        return res;
     }
 
     // Helpers
@@ -218,9 +221,10 @@ pub const Parser = struct {
     /// advance, and return error if it's not the expected TokenType
     ///
     /// msg should generally be a static string. There's no provision for cleanup.
-    fn consume(self: *Self, token_type: TokenType, msg: []const u8) !?Error {
+    fn consume(self: *Self, token_type: TokenType, msg: []const u8) ?Error {
         if (self.check(token_type)) {
             _ = self.advance();
+            return null;
         }
         return Error{
             .token = self.peek(),
