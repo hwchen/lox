@@ -223,6 +223,26 @@ pub const Parser = struct {
         }
         return Error.new(self.alloc, self.peek(), msg);
     }
+
+    /// For moving to the next starting point after a parsing error
+    fn synchronize(self: *Self) void {
+        _ = self.advance();
+        while (!self.isAtEnd()) {
+            if (self.previous.token_type == .semicolon) return;
+            switch (self.peek().token_type) {
+                .@"class",
+                .@"fun",
+                .@"var",
+                .@"for",
+                .@"if",
+                .@"while",
+                .@"print",
+                .@"return",
+                => return,
+                else => self.advance(),
+            }
+        }
+    }
 };
 
 pub const Error = struct {
