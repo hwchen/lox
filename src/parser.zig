@@ -2,6 +2,7 @@ const std = @import("std");
 const ast = @import("./ast.zig");
 const tok = @import("./token.zig");
 const Allocator = std.mem.Allocator;
+const ArrayList = std.ArrayList;
 const ParseFloat = std.fmt.parseFloat;
 const Token = tok.Token;
 const TokenType = tok.TokenType;
@@ -12,30 +13,47 @@ const Expr = ast.Expr;
 /// Produces a Program. It's the caller's responsibility to deallocate the Program.
 pub const Parser = struct {
     alloc: *Allocator,
-    source: []const u8,
     tokens: []const Token,
-    curr: u64 = 0,
+    errors: Errors,
+    curr: u64,
 
     const Self = @This();
 
-    pub fn parseProgram(self: *Self) !Program {
+    pub fn init(alloc: *Allocator, tokens: []const Token) Self {
+        return Self{
+            .alloc = alloc,
+            .tokens = tokens,
+            .errors = Errors{ .errors = ArrayList(Error).init(alloc) },
+            .curr = 0,
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.errors.deinit();
+    }
+
+    pub fn parseProgram(self: *Self) !?Program {
+        var expr = (try self.parseExpr()) orelse return null;
         return Program{
-            .expr = try self.parseExpr(),
+            .expr = expr,
             // necessary for deinit
             .alloc = self.alloc,
         };
     }
 
-    fn parseExpr(self: *Self) !*Expr {
+    /// Instead of returning ExprResult, we return Optional Expr and send errors up a side-channel (to Parser.errors).
+    /// This is because when building a tree, handling all the ExprResult would be a lot more painful then in Scanner,
+    /// which returns Tokens in a linear way (no recursion).
+    fn parseExpr(self: *Self) !?*Expr {
         return try self.parseEquality();
     }
 
-    fn parseEquality(self: *Self) !*Expr {
-        var expr = try self.parseComparison();
+    fn parseEquality(self: *Self) !?*Expr {
+        var expr = (try self.parseComparison()) orelse return null;
 
         while (self.match_any(&[_]TokenType{ .bang_equal, .equal_equal })) {
             const op = ast.BinaryOp.from_token(self.previous());
-            const right = try self.parseComparison();
+            const right = (try self.parseComparison()) orelse return null;
             var new_expr = try self.alloc.create(Expr);
             new_expr.* = Expr{ .binary = .{ .left = expr, .op = op, .right = right } };
             expr = new_expr;
@@ -44,12 +62,12 @@ pub const Parser = struct {
         return expr;
     }
 
-    fn parseComparison(self: *Self) !*Expr {
-        var expr = try self.parseTerm();
+    fn parseComparison(self: *Self) !?*Expr {
+        var expr = (try self.parseTerm()) orelse return null;
 
         while (self.match_any(&[_]TokenType{ .greater, .greater_equal, .less, .less_equal })) {
             const op = ast.BinaryOp.from_token(self.previous());
-            const right = try self.parseTerm();
+            const right = (try self.parseTerm()) orelse return null;
             var new_expr = try self.alloc.create(Expr);
             new_expr.* = Expr{ .binary = .{ .left = expr, .op = op, .right = right } };
             expr = new_expr;
@@ -58,12 +76,12 @@ pub const Parser = struct {
         return expr;
     }
 
-    fn parseTerm(self: *Self) !*Expr {
-        var expr = try self.parseFactor();
+    fn parseTerm(self: *Self) !?*Expr {
+        var expr = (try self.parseFactor()) orelse return null;
 
         while (self.match_any(&[_]TokenType{ .plus, .minus })) {
             const op = ast.BinaryOp.from_token(self.previous());
-            const right = try self.parseFactor();
+            const right = (try self.parseFactor()) orelse return null;
             var new_expr = try self.alloc.create(Expr);
             new_expr.* = Expr{ .binary = .{ .left = expr, .op = op, .right = right } };
             expr = new_expr;
@@ -72,12 +90,12 @@ pub const Parser = struct {
         return expr;
     }
 
-    fn parseFactor(self: *Self) !*Expr {
-        var expr = try self.parseUnary();
+    fn parseFactor(self: *Self) !?*Expr {
+        var expr = (try self.parseUnary()) orelse return null;
 
         while (self.match_any(&[_]TokenType{ .star, .slash })) {
             const op = ast.BinaryOp.from_token(self.previous());
-            const right = try self.parseUnary();
+            const right = (try self.parseUnary()) orelse return null;
             var new_expr = try self.alloc.create(Expr);
             new_expr.* = Expr{ .binary = .{ .left = expr, .op = op, .right = right } };
             expr = new_expr;
@@ -86,21 +104,21 @@ pub const Parser = struct {
         return expr;
     }
 
-    fn parseUnary(self: *Self) std.mem.Allocator.Error!*Expr {
+    fn parseUnary(self: *Self) std.mem.Allocator.Error!?*Expr {
         if (self.match_any(&[_]TokenType{ .bang, .minus })) {
             const op = ast.UnaryOp.from_token(self.previous());
-            var expr = try self.parseUnary();
+            var expr = (try self.parseUnary()) orelse return null;
             var new_expr = try self.alloc.create(Expr);
             new_expr.* = Expr{ .unary = .{ .op = op, .expr = expr } };
             expr = new_expr;
             return expr;
         }
 
-        return try self.parsePrimary();
+        return self.parsePrimary();
     }
 
     // Error on allocation failure
-    fn parsePrimary(self: *Self) !*Expr {
+    fn parsePrimary(self: *Self) !?*Expr {
         var res = try self.alloc.create(Expr);
 
         if (self.match(.@"false")) {
@@ -132,9 +150,11 @@ pub const Parser = struct {
         }
 
         if (self.match(.left_paren)) {
-            const inner = try self.parseExpr();
-            // TODO make error
-            _ = self.match(.right_paren);
+            const inner = (try self.parseExpr()) orelse return null;
+            if (try self.consume(.right_paren, "Expected right paren")) |err| {
+                try self.errors.errors.append(err);
+                return null;
+            }
             res.* = Expr{ .grouping = .{
                 .expr = inner,
             } };
@@ -142,7 +162,8 @@ pub const Parser = struct {
         }
 
         // TODO parse ident, keywords, etc.
-        std.debug.panic("expected expression", .{});
+        try self.errors.errors.append(Error{ .token = self.peek(), .msg = "Expected expression" });
+        return null;
     }
 
     // Helpers
@@ -192,5 +213,45 @@ pub const Parser = struct {
         }
 
         return false;
+    }
+
+    /// advance, and return error if it's not the expected TokenType
+    ///
+    /// msg should generally be a static string. There's no provision for cleanup.
+    fn consume(self: *Self, token_type: TokenType, msg: []const u8) !?Error {
+        if (self.check(token_type)) {
+            _ = self.advance();
+        }
+        return Error{
+            .token = self.peek(),
+            .msg = msg,
+        };
+    }
+};
+
+pub const Error = struct {
+    token: Token,
+    msg: []const u8,
+
+    pub fn write_report(self: Error, source: []const u8) void {
+        if (self.token.token_type == .EOF) {
+            std.debug.print("at end, {s}", .{self.msg});
+        } else {
+            std.debug.print("{} at \"{s}\", {d}", .{ self.token.line(source), self.token.lexeme(source), self.msg });
+        }
+    }
+};
+
+pub const Errors = struct {
+    errors: ArrayList(Error),
+
+    pub fn write_report(self: Errors, source: []const u8) void {
+        for (self.errors.items) |err| {
+            err.write_report(source);
+        }
+    }
+
+    pub fn isEmpty(self: Errors) bool {
+        return self.errors.items.len == 0;
     }
 };

@@ -1,5 +1,6 @@
 const std = @import("std");
 const tok = @import("./token.zig");
+const util = @import("./util.zig");
 
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
@@ -175,14 +176,7 @@ pub const Scanner = struct {
 
     // To be used only for error reporting
     fn line(self: Scanner) u64 {
-        var count: u64 = 1;
-        for (self.source[0..self.curr]) |c| {
-            switch (c) {
-                '\n' => count += 1,
-                else => {},
-            }
-        }
-        return count;
+        return util.line(self.curr, self.source);
     }
 
     fn isAtEnd(self: Scanner) bool {

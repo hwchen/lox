@@ -6,6 +6,7 @@ const parse = @import("./parser.zig");
 const Scanner = scan.Scanner;
 const ScannerErrors = scan.ScannerErrors;
 const Parser = parse.Parser;
+const ParserErrors = parse.Errors;
 
 const io = std.io;
 const fs = std.fs;
@@ -57,14 +58,14 @@ const Lox = struct {
         defer file.close();
 
         const max_size = 1024 * 8;
-        const bytes = try file.readToEndAlloc(alloc, max_size);
-        defer alloc.free(bytes);
+        const source = try file.readToEndAlloc(alloc, max_size);
+        defer alloc.free(source);
 
-        var lox_res = try self.run(alloc, bytes);
+        var lox_res = try self.run(alloc, source);
         switch (lox_res) {
             .ok => {},
             .err => |*err| {
-                err.write_report();
+                err.write_report(source);
                 err.deinit();
             },
         }
@@ -88,7 +89,7 @@ const Lox = struct {
                 switch (lox_res) {
                     .ok => {},
                     .err => |*err| {
-                        err.write_report();
+                        err.write_report(line);
                         err.deinit();
                     },
                 }
@@ -120,15 +121,22 @@ const Lox = struct {
             std.log.info("{s}", .{buf.items});
         }
 
-        var parser = Parser{
-            .alloc = alloc,
-            .source = bytes,
-            .tokens = scan_res.tokens.items,
-        };
-        var ast = try parser.parseProgram();
-        defer ast.deinit();
+        var parser = Parser.init(
+            alloc,
+            scan_res.tokens.items,
+        );
+        var maybe_ast = try parser.parseProgram();
 
-        ast.print_debug(bytes);
+        if (maybe_ast) |*ast| {
+            ast.print_debug(bytes);
+            defer ast.deinit();
+        }
+
+        if (!parser.errors.isEmpty()) {
+            return LoxResult{ .err = LoxError{
+                .parser = parser.errors,
+            } };
+        }
 
         return LoxResult.ok;
     }
@@ -141,16 +149,20 @@ const LoxResult = union(enum) {
 
 const LoxError = union(enum) {
     scanner: ScannerErrors,
+    parser: ParserErrors,
 
-    fn write_report(self: LoxError) void {
+    fn write_report(self: LoxError, source: []const u8) void {
         switch (self) {
             .scanner => |err| err.write_report(),
+            .parser => |err| err.write_report(source),
         }
+        std.debug.print("\n", .{});
     }
 
     fn deinit(self: *LoxError) void {
         switch (self.*) {
             .scanner => |*err| err.deinit(),
+            else => {},
         }
     }
 };

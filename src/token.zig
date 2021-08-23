@@ -1,3 +1,5 @@
+const util = @import("./util.zig");
+
 pub const TokenType = enum {
     // Single-character tokens
     left_paren,
@@ -53,12 +55,20 @@ pub const Token = struct {
     start: u64,
     len: u64,
 
+    pub fn line(self: Token, source: []const u8) u64 {
+        return util.line(self.start, source);
+    }
+
+    pub fn lexeme(self: Token, source: []const u8) []const u8 {
+        return source[self.start .. self.start + self.len];
+    }
+
     pub fn write_debug(self: Token, writer: anytype, bytes: []const u8) !void {
         var wtr = writer.writer();
-        if (self.start < bytes.len) {
-            try wtr.print("{} \"{s}\" at {d}", .{ self.token_type, bytes[self.start .. self.start + self.len], self.start });
-        } else {
+        if (self.token_type == .EOF) {
             try wtr.print("{}", .{self.token_type});
+        } else {
+            try wtr.print("{} \"{s}\" at {d}", .{ self.token_type, bytes[self.start .. self.start + self.len], self.start });
         }
     }
 };
