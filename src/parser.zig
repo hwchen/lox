@@ -28,10 +28,6 @@ pub const Parser = struct {
         };
     }
 
-    pub fn deinit(self: *Self) void {
-        self.errors.errors.deinit();
-    }
-
     /// Always need to return an AST, otherwise memory will be leaked
     pub fn parseProgram(self: *Self) !Program {
         var expr = try self.parseExpr();
@@ -150,7 +146,6 @@ pub const Parser = struct {
         if (self.match(.left_paren)) {
             const inner = try self.parseExpr();
             if (self.consume(.right_paren, "Expected right paren")) |err| {
-                std.debug.print("HIT\n", .{});
                 try self.errors.errors.append(err);
                 inner.deinit(self.alloc);
                 self.alloc.destroy(inner);
@@ -164,7 +159,7 @@ pub const Parser = struct {
         }
 
         // TODO parse ident, keywords, etc.
-        try self.errors.errors.append(Error{ .token = self.peek(), .msg = "Expected expression" });
+        try self.errors.errors.append(Error.new(self.alloc, self.peek(), "Expected expression"));
         res.* = Expr.invalid;
         return res;
     }
@@ -226,23 +221,35 @@ pub const Parser = struct {
             _ = self.advance();
             return null;
         }
-        return Error{
-            .token = self.peek(),
-            .msg = msg,
-        };
+        return Error.new(self.alloc, self.peek(), msg);
     }
 };
 
 pub const Error = struct {
     token: Token,
-    msg: []const u8,
+    msg: ArrayList(u8),
+
+    pub fn new(alloc: *Allocator, token: Token, msg: []const u8) Error {
+        var buf = ArrayList(u8).init(alloc);
+        // if there's an error trying to make error msg, just exit
+        buf.writer().print("{s}", .{msg}) catch unreachable;
+
+        return Error{
+            .token = token,
+            .msg = buf,
+        };
+    }
 
     pub fn write_report(self: Error, source: []const u8) void {
         if (self.token.token_type == .EOF) {
-            std.debug.print("at end, {s}", .{self.msg});
+            std.debug.print("at end, {s}", .{self.msg.items});
         } else {
-            std.debug.print("{} at \"{s}\", {d}", .{ self.token.line(source), self.token.lexeme(source), self.msg });
+            std.debug.print("{} at \"{s}\", {s}", .{ self.token.line(source), self.token.lexeme(source), self.msg.items });
         }
+    }
+
+    pub fn deinit(self: *Error) void {
+        self.msg.deinit();
     }
 };
 
@@ -257,5 +264,12 @@ pub const Errors = struct {
 
     pub fn isEmpty(self: Errors) bool {
         return self.errors.items.len == 0;
+    }
+
+    pub fn deinit(self: *Errors) void {
+        for (self.errors.items) |*err| {
+            err.deinit();
+        }
+        self.errors.deinit();
     }
 };

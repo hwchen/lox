@@ -62,15 +62,12 @@ const Lox = struct {
         defer alloc.free(source);
 
         var lox_res = try self.run(alloc, source);
-        switch (lox_res.result) {
+        switch (lox_res) {
             .ok => {},
             .err => |*err| {
                 err.write_report(source);
                 err.deinit();
             },
-        }
-        if (lox_res.parser) |*parser| {
-            parser.deinit();
         }
     }
 
@@ -89,15 +86,12 @@ const Lox = struct {
 
             if (try rdr.readUntilDelimiterOrEof(&buf, '\n')) |line| {
                 var lox_res = try self.run(alloc, line);
-                switch (lox_res.result) {
+                switch (lox_res) {
                     .ok => {},
                     .err => |*err| {
                         err.write_report(line);
                         err.deinit();
                     },
-                }
-                if (lox_res.parser) |*parser| {
-                    parser.deinit();
                 }
             } else {
                 // EOF
@@ -110,13 +104,13 @@ const Lox = struct {
         _ = self;
         var scanner = Scanner{ .alloc = alloc, .source = bytes };
 
-        const scan_res = try scanner.scanTokens();
+        var scan_res = try scanner.scanTokens();
         defer scan_res.tokens.deinit();
 
         if (!scan_res.errors.isEmpty()) {
-            return LoxResult{ .result = .{ .err = .{
+            return LoxResult{ .err = .{
                 .scanner = scan_res.errors,
-            } } };
+            } };
         }
 
         // debug print tokens
@@ -136,22 +130,18 @@ const Lox = struct {
         defer ast.deinit();
 
         if (!parser.errors.isEmpty()) {
-            return LoxResult{ .parser = parser, .result = .{ .err = .{
-                .scanner = scan_res.errors,
-            } } };
+            return LoxResult{ .err = .{
+                .parser = parser.errors,
+            } };
         }
 
-        return LoxResult{ .result = .ok };
+        return LoxResult.ok;
     }
 };
 
-const LoxResult = struct {
-    // passed back so it can be deinit
-    parser: ?Parser = null,
-    result: union(enum) {
-        ok,
-        err: LoxError,
-    },
+const LoxResult = union(enum) {
+    ok,
+    err: LoxError,
 };
 
 const LoxError = union(enum) {
@@ -168,8 +158,8 @@ const LoxError = union(enum) {
 
     fn deinit(self: *LoxError) void {
         switch (self.*) {
-            .scanner => |*err| err.deinit(),
-            else => {},
+            .scanner => |*errs| errs.deinit(),
+            .parser => |*errs| errs.deinit(),
         }
     }
 };

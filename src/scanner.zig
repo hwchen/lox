@@ -7,40 +7,6 @@ const Allocator = std.mem.Allocator;
 const Token = tok.Token;
 const TokenType = tok.TokenType;
 
-pub const ScannerError = struct {
-    line: u64,
-    message: ArrayList(u8),
-
-    pub fn write_report(self: ScannerError) void {
-        std.debug.print("[line {d}] Error: {s}\n", .{ self.line, self.message.items });
-    }
-
-    pub fn deinit(self: *ScannerError) void {
-        self.message.deinit();
-    }
-};
-
-pub const ScannerErrors = struct {
-    errors: ArrayList(ScannerError),
-
-    pub fn write_report(self: ScannerErrors) void {
-        for (self.errors.items) |err| {
-            err.write_report();
-        }
-    }
-
-    pub fn isEmpty(self: ScannerErrors) bool {
-        return self.errors.items.len == 0;
-    }
-
-    pub fn deinit(self: *ScannerErrors) void {
-        for (self.errors.items) |*err| {
-            err.deinit();
-        }
-        self.errors.deinit();
-    }
-};
-
 pub const Scanner = struct {
     alloc: *Allocator,
     source: []const u8,
@@ -165,7 +131,7 @@ pub const Scanner = struct {
 
         return ScanTokenResult{ .err = ScannerError{
             .line = self.line(),
-            .message = buf,
+            .msg = buf,
         } };
     }
 
@@ -202,7 +168,7 @@ pub const Scanner = struct {
 
             return ScanTokenResult{ .err = ScannerError{
                 .line = self.line(),
-                .message = buf,
+                .msg = buf,
             } };
         }
 
@@ -295,3 +261,37 @@ fn getKeyword(ident: []const u8) ?TokenType {
     const map = comptime std.ComptimeStringMap(TokenType, kvs);
     return map.get(ident);
 }
+
+pub const ScannerError = struct {
+    line: u64,
+    msg: ArrayList(u8),
+
+    pub fn write_report(self: ScannerError) void {
+        std.debug.print("[line {d}] Error: {s}\n", .{ self.line, self.msg.items });
+    }
+
+    pub fn deinit(self: *ScannerError) void {
+        self.msg.deinit();
+    }
+};
+
+pub const ScannerErrors = struct {
+    errors: ArrayList(ScannerError),
+
+    pub fn write_report(self: ScannerErrors) void {
+        for (self.errors.items) |err| {
+            err.write_report();
+        }
+    }
+
+    pub fn isEmpty(self: ScannerErrors) bool {
+        return self.errors.items.len == 0;
+    }
+
+    pub fn deinit(self: *ScannerErrors) void {
+        for (self.errors.items) |*err| {
+            err.deinit();
+        }
+        self.errors.deinit();
+    }
+};
