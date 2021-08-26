@@ -8,6 +8,8 @@ const Token = tok.Token;
 const TokenType = tok.TokenType;
 
 const Program = ast.Program;
+const Stmt = ast.Stmt;
+const StmtType = ast.StmtType;
 const Expr = ast.Expr;
 
 /// Produces a Program. It's the caller's responsibility to deallocate the Program.
@@ -30,11 +32,31 @@ pub const Parser = struct {
 
     /// Always need to return an AST, otherwise memory will be leaked
     pub fn parseProgram(self: *Self) !Program {
-        var expr = try self.parseExpr();
+        var stmts = ArrayList(Stmt).init(self.alloc);
+        while (!self.isAtEnd()) {
+            try stmts.append(try self.parseStmt());
+        }
+
         return Program{
-            .expr = expr,
+            .stmts = stmts,
             // necessary for deinit
             .alloc = self.alloc,
+        };
+    }
+
+    fn parseStmt(self: *Self) !Stmt {
+        const stmt_type = if (self.match(.@"print")) StmtType.print else .expr;
+        var expr = try self.parseExpr();
+
+        if (self.consume(.semicolon, "Expected ; at end of statement")) |err| {
+            try self.errors.errors.append(err);
+            expr.deinit(self.alloc);
+            expr.* = Expr.invalid;
+        }
+
+        return Stmt{
+            .stmt_type = stmt_type,
+            .expr = expr,
         };
     }
 
@@ -262,9 +284,9 @@ pub const Error = struct {
 
     pub fn write_report(self: Error, source: []const u8) void {
         if (self.token.token_type == .EOF) {
-            std.debug.print("at end, {s}", .{self.msg.items});
+            std.debug.print("at end, {s}\n", .{self.msg.items});
         } else {
-            std.debug.print("{} at \"{s}\", {s}", .{ self.token.line(source), self.token.lexeme(source), self.msg.items });
+            std.debug.print("[line {}] at \"{s}\", {s}\n", .{ self.token.line(source), self.token.lexeme(source), self.msg.items });
         }
     }
 

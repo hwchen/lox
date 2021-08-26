@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const ArrayList = std.ArrayList;
 
 const tok = @import("./token.zig");
 const Token = tok.Token;
@@ -8,7 +9,7 @@ const TokenType = tok.TokenType;
 /// temporarily just an Expr
 pub const Program = struct {
     alloc: *Allocator,
-    expr: *Expr,
+    stmts: ArrayList(Stmt),
 
     pub fn print_debug(self: Program, source: []const u8) void {
         var printer = PrintAst{ .source = source };
@@ -16,9 +17,26 @@ pub const Program = struct {
     }
 
     pub fn deinit(self: *Program) void {
-        self.expr.deinit(self.alloc);
-        self.alloc.destroy(self.expr);
+        for (self.stmts.items) |*stmt| {
+            stmt.deinit(self.alloc);
+        }
+        self.stmts.deinit();
     }
+};
+
+pub const Stmt = struct {
+    stmt_type: StmtType,
+    expr: *Expr,
+
+    pub fn deinit(self: *Stmt, alloc: *Allocator) void {
+        self.expr.deinit(alloc);
+        alloc.destroy(self.expr);
+    }
+};
+
+pub const StmtType = enum {
+    print,
+    expr,
 };
 
 pub const Expr = union(enum) {
@@ -146,8 +164,19 @@ const PrintAst = struct {
 
     fn print(self: *Self, program: Program) void {
         std.debug.print("ast: ", .{});
-        self.visitExpr(program.expr.*);
+        for (program.stmts.items) |stmt| {
+            self.visitStmt(stmt);
+            std.debug.print(";\n", .{});
+        }
         std.debug.print("\n", .{});
+    }
+
+    fn visitStmt(self: *Self, stmt: Stmt) void {
+        switch (stmt.stmt_type) {
+            .expr => std.debug.print("exprStmt: ", .{}),
+            .print => std.debug.print("printStmt: ", .{}),
+        }
+        self.visitExpr(stmt.expr.*);
     }
 
     fn visitExpr(self: *Self, expr: Expr) void {
@@ -156,7 +185,7 @@ const PrintAst = struct {
             .unary => |n| self.visitUnary(n),
             .binary => |n| self.visitBinary(n),
             .grouping => |n| self.visitGrouping(n),
-            .invalid => std.debug.print("invalid", .{}),
+            .invalid => std.debug.print("invalidExpr", .{}),
         }
     }
 

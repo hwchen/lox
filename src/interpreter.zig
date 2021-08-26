@@ -11,26 +11,55 @@ const Unary = ast.Unary;
 const Binary = ast.Binary;
 const BinaryOp = ast.BinaryOp;
 const Grouping = ast.Grouping;
+const Stmt = ast.Stmt;
+const StmtType = ast.StmtType;
 const Value = value.Value;
 
-/// Looks a little weird, but Result is for interpreter errors, and the ! is for allocation errors
+/// Looks a little weird, but ExprResult is for interpreter errors, and the ! is for allocation errors
 ///
-/// It's easy to return a Result at this stage because there's no need to collect errors, either
+/// It's easy to return a ExprResult at this stage because there's no need to collect errors, either
 /// a statement succeeds or fails.
 pub const Interpreter = struct {
     alloc: *Allocator,
     source: []const u8,
+    program: Program,
+    curr: u64,
 
     const Self = @This();
 
     // Errors that are not related to interpreting
     const ErrorSet = std.mem.Allocator.Error || error{InvalidCharacter};
 
-    pub fn evaluate(self: *Self, program: Program) !Result {
-        return self.visitExpr(program.expr.*);
+    pub fn init(alloc: *Allocator, source: []const u8, program: Program) Self {
+        return Self{
+            .alloc = alloc,
+            .source = source,
+            .program = program,
+            .curr = 0,
+        };
     }
 
-    fn visitExpr(self: *Self, expr: Expr) ErrorSet!Result {
+    pub fn eval_next_stmt(self: *Self) !?StmtResult {
+        const stmts = self.program.stmts.items;
+        if (self.curr < stmts.len) {
+            const res = try self.visitStmt(stmts[self.curr]);
+            self.curr += 1;
+            return res;
+        } else {
+            return null;
+        }
+    }
+
+    fn visitStmt(self: *Self, stmt: Stmt) ErrorSet!StmtResult {
+        const expr_res = try self.visitExpr(stmt.expr.*);
+
+        switch (expr_res) {
+            .ok => |val| return StmtResult{ .ok = Effect{ .stmt_type = stmt.stmt_type, .value = val } },
+            .err => |e| return StmtResult{ .err = e },
+        }
+    }
+
+    fn visitExpr(self: *Self, expr: Expr) ErrorSet!ExprResult {
         return switch (expr) {
             .literal => |n| try self.visitLiteral(n),
             .unary => |n| try self.visitUnary(n),
@@ -40,7 +69,7 @@ pub const Interpreter = struct {
         };
     }
 
-    fn visitLiteral(self: *Self, literal: Literal) !Result {
+    fn visitLiteral(self: *Self, literal: Literal) !ExprResult {
         const res = switch (literal) {
             .number => |span| {
                 // error should be caught earlier in synatx/parsing
@@ -60,7 +89,7 @@ pub const Interpreter = struct {
         return ok(res);
     }
 
-    fn visitUnary(self: *Self, unary: Unary) ErrorSet!Result {
+    fn visitUnary(self: *Self, unary: Unary) ErrorSet!ExprResult {
         const val_res = try self.visitExpr(unary.expr.*);
         const val = switch (val_res) {
             .ok => |val| val,
@@ -76,7 +105,7 @@ pub const Interpreter = struct {
         };
     }
 
-    fn visitBinary(self: *Self, binary: Binary) !Result {
+    fn visitBinary(self: *Self, binary: Binary) !ExprResult {
         const left_res = try self.visitExpr(binary.left.*);
         const right_res = try self.visitExpr(binary.right.*);
         // right and left val need to be var in case they need to be deinit
@@ -148,11 +177,11 @@ pub const Interpreter = struct {
         }
     }
 
-    fn visitGrouping(self: *Self, grouping: Grouping) !Result {
+    fn visitGrouping(self: *Self, grouping: Grouping) !ExprResult {
         return self.visitExpr(grouping.expr.*);
     }
 
-    fn checkNumberOperand(self: Self, val: *Value, op: BinaryOp) Result {
+    fn checkNumberOperand(self: Self, val: *Value, op: BinaryOp) ExprResult {
         const e = switch (val.*) {
             .string => |s| err(Error.new(self.alloc, "value \"{s}\" must be a number for op {}", .{ s.items, op })),
             else => err(Error.new(self.alloc, "value '{s}' must be a number for op {}", .{ val, op })),
@@ -172,9 +201,19 @@ fn isTruthy(val: Value) bool {
     };
 }
 
-pub const Result = union(enum) {
+pub const ExprResult = union(enum) {
     ok: Value,
     err: Error,
+};
+
+pub const StmtResult = union(enum) {
+    ok: Effect,
+    err: Error,
+};
+
+pub const Effect = struct {
+    stmt_type: StmtType,
+    value: Value,
 };
 
 // TODO get line somehow
@@ -192,7 +231,7 @@ pub const Error = struct {
     }
 
     pub fn write_report(self: Error) void {
-        std.debug.print("{s}", .{self.msg.items});
+        std.debug.print("{s}\n", .{self.msg.items});
     }
 
     pub fn deinit(self: *Error) void {
@@ -200,13 +239,13 @@ pub const Error = struct {
     }
 };
 
-fn ok(val: Value) Result {
+fn ok(val: Value) ExprResult {
     return .{
         .ok = val,
     };
 }
 
-fn err(e: Error) Result {
+fn err(e: Error) ExprResult {
     return .{
         .err = e,
     };

@@ -66,14 +66,7 @@ const Lox = struct {
         const source = try file.readToEndAlloc(alloc, max_size);
         defer alloc.free(source);
 
-        var lox_res = try self.run(alloc, source);
-        switch (lox_res) {
-            .ok => |val| std.debug.print("{}\n", .{val}),
-            .err => |*err| {
-                err.write_report(source);
-                err.deinit();
-            },
-        }
+        try self.run(alloc, source);
     }
 
     fn runPrompt(self: *Lox, alloc: *Allocator) !void {
@@ -90,14 +83,7 @@ const Lox = struct {
             try stdout_buf.flush();
 
             if (try rdr.readUntilDelimiterOrEof(&buf, '\n')) |line| {
-                var lox_res = try self.run(alloc, line);
-                switch (lox_res) {
-                    .ok => |val| std.debug.print("{}\n", .{val}),
-                    .err => |*err| {
-                        err.write_report(line);
-                        err.deinit();
-                    },
-                }
+                try self.run(alloc, line);
             } else {
                 // EOF
                 break;
@@ -105,7 +91,7 @@ const Lox = struct {
         }
     }
 
-    fn run(self: *Lox, alloc: *Allocator, bytes: []const u8) !LoxResult {
+    fn run(self: *Lox, alloc: *Allocator, bytes: []const u8) !void {
         _ = self;
         var scanner = Scanner{ .alloc = alloc, .source = bytes };
 
@@ -113,17 +99,9 @@ const Lox = struct {
         defer scan_res.tokens.deinit();
 
         if (!scan_res.errors.isEmpty()) {
-            return LoxResult{ .err = .{
-                .scanner = scan_res.errors,
-            } };
-        }
-
-        // debug print tokens
-        for (scan_res.tokens.items) |token| {
-            var buf = ArrayList(u8).init(alloc);
-            defer buf.deinit();
-            try token.write_debug(&buf, bytes);
-            std.log.info("{s}", .{buf.items});
+            scan_res.errors.write_report();
+            scan_res.errors.deinit();
+            return;
         }
 
         var parser = Parser.init(
@@ -131,49 +109,30 @@ const Lox = struct {
             scan_res.tokens.items,
         );
         var ast = try parser.parseProgram();
-        ast.print_debug(bytes);
         defer ast.deinit();
+        ast.print_debug(bytes);
 
         if (!parser.errors.isEmpty()) {
-            return LoxResult{ .err = .{
-                .parser = parser.errors,
-            } };
+            parser.errors.write_report(bytes);
+            parser.errors.deinit();
+            return;
         }
 
-        var interpreter = Interpreter{ .alloc = alloc, .source = bytes };
-        var eval_res = try interpreter.evaluate(ast);
-
-        return switch (eval_res) {
-            .ok => |val| LoxResult{ .ok = val },
-            .err => |e| LoxResult{ .err = .{ .eval = e } },
-        };
-    }
-};
-
-const LoxResult = union(enum) {
-    ok: Value,
-    err: LoxError,
-};
-
-const LoxError = union(enum) {
-    scanner: ScannerErrors,
-    parser: ParserErrors,
-    eval: EvalError,
-
-    fn write_report(self: LoxError, source: []const u8) void {
-        switch (self) {
-            .scanner => |err| err.write_report(),
-            .parser => |err| err.write_report(source),
-            .eval => |err| err.write_report(),
-        }
-        std.debug.print("\n", .{});
-    }
-
-    fn deinit(self: *LoxError) void {
-        switch (self.*) {
-            .scanner => |*err| err.deinit(),
-            .parser => |*err| err.deinit(),
-            .eval => |*err| err.deinit(),
+        var interpreter = Interpreter.init(alloc, bytes, ast);
+        while (try interpreter.eval_next_stmt()) |*stmt_res| {
+            switch (stmt_res.*) {
+                .ok => |res| {
+                    // Currently LoxResult never returns "ok" because that's always handled here.
+                    switch (res.stmt_type) {
+                        .print => std.debug.print("{}\n", .{res.value}),
+                        .expr => {},
+                    }
+                },
+                .err => |*e| {
+                    e.write_report();
+                    e.deinit();
+                },
+            }
         }
     }
 };
