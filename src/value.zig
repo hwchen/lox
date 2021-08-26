@@ -40,10 +40,15 @@ pub const Value = union(enum) {
         }
     }
 
-    pub fn as_string(self: Value) ?[]const u8 {
+    // special fn called by zig compiler
+    pub fn format(self: Value, comptime fmt: []const u8, options: std.fmt.FormatOptions, out_stream: anytype) !void {
+        _ = fmt;
+        _ = options;
         switch (self) {
-            .string => |s| s.items,
-            else => null,
+            .number => |x| try std.fmt.format(out_stream, "{d}", .{x}),
+            .string => |s| try std.fmt.format(out_stream, "\"{s}\"", .{s.items}),
+            .boolean => |b| try std.fmt.format(out_stream, "{}", .{b}),
+            .nil => try std.fmt.format(out_stream, "nil", .{}),
         }
     }
 

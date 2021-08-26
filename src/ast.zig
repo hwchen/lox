@@ -168,7 +168,6 @@ const PrintAst = struct {
             self.visitStmt(stmt);
             std.debug.print(";\n", .{});
         }
-        std.debug.print("\n", .{});
     }
 
     fn visitStmt(self: *Self, stmt: Stmt) void {
