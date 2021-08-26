@@ -52,6 +52,8 @@ pub const Parser = struct {
             try self.errors.errors.append(err);
             expr.deinit(self.alloc);
             expr.* = Expr.invalid;
+            // need to advance, otherwise will infinite loop
+            _ = self.advance();
         }
 
         return Stmt{

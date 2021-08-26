@@ -125,7 +125,7 @@ const Lox = struct {
                     // Currently LoxResult never returns "ok" because that's always handled here.
                     switch (res.stmt_type) {
                         .print => std.debug.print("{}\n", .{res.value}),
-                        .expr => {},
+                        .expr => std.debug.print("expr >> {}\n", .{res.value}),
                     }
                 },
                 .err => |*e| {
