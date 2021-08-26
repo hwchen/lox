@@ -74,13 +74,9 @@ const Lox = struct {
         var buf: [1024]u8 = undefined;
         var stdin = io.getStdIn().reader();
         var rdr = io.bufferedReader(stdin).reader();
-        var stdout = io.getStdOut().writer();
-        var stdout_buf = io.bufferedWriter(stdout);
-        var wtr = stdout_buf.writer();
 
         while (true) {
-            _ = try wtr.write("> ");
-            try stdout_buf.flush();
+            std.debug.print("> ", .{});
 
             if (try rdr.readUntilDelimiterOrEof(&buf, '\n')) |line| {
                 try self.run(alloc, line);
