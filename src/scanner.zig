@@ -15,18 +15,18 @@ pub const Scanner = struct {
 
     const ScanTokenResult = union(enum) {
         token: Token,
-        err: ScannerError,
+        err: Error,
         skip,
     };
 
     const ScanTokensResult = struct {
         tokens: ArrayList(Token),
-        errors: ScannerErrors,
+        errors: Errors,
     };
 
     pub fn scanTokens(self: *Scanner) !ScanTokensResult {
         var tokens = ArrayList(Token).init(self.alloc);
-        var errors = ArrayList(ScannerError).init(self.alloc);
+        var errors = ArrayList(Error).init(self.alloc);
 
         while (!self.isAtEnd()) {
             self.start = self.curr;
@@ -46,7 +46,7 @@ pub const Scanner = struct {
 
         return ScanTokensResult{
             .tokens = tokens,
-            .errors = ScannerErrors{
+            .errors = Errors{
                 .errors = errors,
             },
         };
@@ -125,13 +125,9 @@ pub const Scanner = struct {
     }
 
     fn unexpectedCharacterError(self: *Scanner, c: u8) ScanTokenResult {
-        var buf = ArrayList(u8).init(self.alloc);
-        // if there's an error trying to make error msg, just exit
-        buf.writer().print("Unexpected character {c}", .{c}) catch unreachable;
-
-        return ScanTokenResult{ .err = ScannerError{
+        return ScanTokenResult{ .err = Error{
             .line = self.line(),
-            .msg = buf,
+            .kind = .{ .unexpected_char = c },
         } };
     }
 
@@ -163,12 +159,9 @@ pub const Scanner = struct {
         }
 
         if (self.isAtEnd()) {
-            var buf = ArrayList(u8).init(self.alloc);
-            buf.writer().print("Unterminated string", .{}) catch unreachable;
-
-            return ScanTokenResult{ .err = ScannerError{
+            return ScanTokenResult{ .err = Error{
                 .line = self.line(),
-                .msg = buf,
+                .kind = .unterminated_string,
             } };
         }
 
@@ -262,36 +255,43 @@ fn getKeyword(ident: []const u8) ?TokenType {
     return map.get(ident);
 }
 
-pub const ScannerError = struct {
+pub const Error = struct {
     line: u64,
-    msg: ArrayList(u8),
+    kind: ErrorKind,
 
-    pub fn write_report(self: ScannerError) void {
-        std.debug.print("[line {d}] Error: {s}\n", .{ self.line, self.msg.items });
+    pub fn format(self: Error, comptime fmt: []const u8, options: std.fmt.FormatOptions, out_stream: anytype) !void {
+        _ = fmt;
+        _ = options;
+        switch (self.kind) {
+            .unterminated_string => try std.fmt.format(out_stream, "[line {d}] Error: unterminated string", .{self.line}),
+            .unexpected_char => |c| try std.fmt.format(out_stream, "[line {d}] Error: unexpected character '{c}'", .{ self.line, c }),
+        }
     }
 
-    pub fn deinit(self: *ScannerError) void {
+    pub fn deinit(self: *Error) void {
         self.msg.deinit();
     }
 };
 
-pub const ScannerErrors = struct {
-    errors: ArrayList(ScannerError),
+pub const ErrorKind = union(enum) {
+    unterminated_string,
+    unexpected_char: u8,
+};
 
-    pub fn write_report(self: ScannerErrors) void {
+pub const Errors = struct {
+    errors: ArrayList(Error),
+
+    pub fn write_report(self: Errors) void {
         for (self.errors.items) |err| {
-            err.write_report();
+            std.debug.print("{}\n", .{err});
         }
     }
 
-    pub fn isEmpty(self: ScannerErrors) bool {
+    pub fn isEmpty(self: Errors) bool {
         return self.errors.items.len == 0;
     }
 
-    pub fn deinit(self: *ScannerErrors) void {
-        for (self.errors.items) |*err| {
-            err.deinit();
-        }
+    pub fn deinit(self: *Errors) void {
         self.errors.deinit();
     }
 };

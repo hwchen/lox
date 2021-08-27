@@ -100,6 +100,7 @@ const Lox = struct {
             return;
         }
 
+        std.debug.print("HIT", .{});
         var parser = Parser.init(
             alloc,
             scan_res.tokens.items,
