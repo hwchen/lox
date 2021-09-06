@@ -52,10 +52,10 @@ pub const TokenType = enum {
 
 pub const Token = struct {
     token_type: TokenType,
-    start: u64,
-    len: u64,
+    start: u32,
+    len: u32,
 
-    pub fn line(self: Token, source: []const u8) u64 {
+    pub fn line(self: Token, source: []const u8) u32 {
         return util.line(self.start, source);
     }
 

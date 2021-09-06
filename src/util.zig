@@ -1,5 +1,5 @@
-pub fn line(idx: u64, source: []const u8) u64 {
-    var count: u64 = 1;
+pub fn line(idx: u32, source: []const u8) u32 {
+    var count: u32 = 1;
     for (source[0..idx]) |c| {
         switch (c) {
             '\n' => count += 1,

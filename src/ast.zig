@@ -68,8 +68,8 @@ pub const Literal = union(enum) {
 
     /// Only convert on program execution
     const Span = struct {
-        start: u64,
-        len: u64,
+        start: u32,
+        len: u32,
 
         const Self = @This();
 

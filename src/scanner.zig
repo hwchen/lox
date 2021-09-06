@@ -10,8 +10,8 @@ const TokenType = tok.TokenType;
 pub const Scanner = struct {
     alloc: *Allocator,
     source: []const u8,
-    start: u64 = 0,
-    curr: u64 = 0,
+    start: u32 = 0,
+    curr: u32 = 0,
 
     const ScanTokenResult = union(enum) {
         token: Token,
@@ -40,8 +40,8 @@ pub const Scanner = struct {
 
         try tokens.append(Token{
             .token_type = .EOF,
-            .start = self.source.len,
-            .len = self.source.len,
+            .start = @intCast(u32, self.source.len),
+            .len = @intCast(u32, self.source.len),
         });
 
         return ScanTokensResult{
@@ -137,7 +137,7 @@ pub const Scanner = struct {
     }
 
     // To be used only for error reporting
-    fn line(self: Scanner) u64 {
+    fn line(self: Scanner) u32 {
         return util.line(self.curr, self.source);
     }
 
@@ -256,7 +256,7 @@ fn getKeyword(ident: []const u8) ?TokenType {
 }
 
 pub const Error = struct {
-    line: u64,
+    line: u32,
     kind: ErrorKind,
 
     pub fn format(self: Error, comptime fmt: []const u8, options: std.fmt.FormatOptions, out_stream: anytype) !void {

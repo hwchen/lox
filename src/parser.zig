@@ -17,7 +17,7 @@ pub const Parser = struct {
     alloc: *Allocator,
     tokens: []const Token,
     errors: Errors,
-    curr: u64,
+    curr: u32,
 
     const Self = @This();
 
