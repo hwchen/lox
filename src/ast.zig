@@ -49,6 +49,11 @@ pub const Tree = struct {
         self.alloc.free(self.extra_data);
     }
 
+    pub fn stmts(self: *Tree) []Node.Index {
+        const root = self.nodes.get(0);
+        return self.extra_data[root.data.lhs..root.data.rhs];
+    }
+
     pub fn debug_print(self: *Tree) void {
         self.debug_print_node(0);
     }
@@ -111,9 +116,14 @@ pub const Tree = struct {
         }
     }
 
-    fn tokenSlice(self: Tree, idx: Token.Index) []const u8 {
+    pub fn tokenSlice(self: Tree, idx: Token.Index) []const u8 {
         const token = self.tokens[idx];
         return token.lexeme(self.source);
+    }
+
+    pub fn tokenType(self: Tree, idx: Token.Index) TokenType {
+        const token = self.tokens[idx];
+        return token.token_type;
     }
 };
 

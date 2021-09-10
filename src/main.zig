@@ -2,15 +2,15 @@ const std = @import("std");
 const clap = @import("clap");
 const scan = @import("./scanner.zig");
 const parse = @import("./parser.zig");
-//const interpret = @import("./interpreter.zig");
+const interpret = @import("./interpreter.zig");
 const value = @import("./value.zig");
 
 const Scanner = scan.Scanner;
 const ScannerErrors = scan.ScannerErrors;
 const Parser = parse.Parser;
 const ParserErrors = parse.Errors;
-//const Interpreter = interpret.Interpreter;
-//const EvalError = interpret.Error;
+const Interpreter = interpret.Interpreter;
+const EvalError = interpret.Error;
 const Value = value.Value;
 
 const io = std.io;
@@ -117,21 +117,21 @@ const Lox = struct {
             return;
         }
 
-        //var interpreter = Interpreter.init(alloc, source, ast);
-        //while (try interpreter.eval_next_stmt()) |*stmt_res| {
-        //    switch (stmt_res.*) {
-        //        .ok => |res| {
-        //            // Currently LoxResult never returns "ok" because that's always handled here.
-        //            switch (res.stmt_type) {
-        //                .print => std.debug.print("{}\n", .{res.value}),
-        //                .expr => {},
-        //            }
-        //        },
-        //        .err => |*e| {
-        //            e.write_report();
-        //            e.deinit();
-        //        },
-        //    }
-        //}
+        var interpreter = Interpreter.init(alloc, source, ast);
+        while (try interpreter.evalNextStmt()) |*stmt_res| {
+            switch (stmt_res.*) {
+                .ok => |res| {
+                    // Currently LoxResult never returns "ok" because that's always handled here.
+                    switch (res.stmt_type) {
+                        .print => std.debug.print("{}\n", .{res.value}),
+                        .expr => {},
+                    }
+                },
+                .err => |*e| {
+                    e.write_report();
+                    e.deinit();
+                },
+            }
+        }
     }
 };

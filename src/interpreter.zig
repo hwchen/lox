@@ -1,19 +1,15 @@
 const std = @import("std");
 const ast = @import("./ast.zig");
+const token = @import("./token.zig");
 const value = @import("./value.zig");
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
-const Program = ast.Program;
+const Tree = ast.Tree;
+const Node = ast.Node;
 const Expr = ast.Expr;
-const Literal = ast.Literal;
-const Unary = ast.Unary;
-const Binary = ast.Binary;
-const BinaryOp = ast.BinaryOp;
-const Grouping = ast.Grouping;
-const Stmt = ast.Stmt;
-const StmtType = ast.StmtType;
 const Value = value.Value;
+const TokenType = token.TokenType;
 
 /// Looks a little weird, but ExprResult is for interpreter errors, and the ! is for allocation errors
 ///
@@ -22,7 +18,7 @@ const Value = value.Value;
 pub const Interpreter = struct {
     alloc: *Allocator,
     source: []const u8,
-    program: Program,
+    tree: Tree,
     curr: u64,
 
     const Self = @This();
@@ -30,19 +26,19 @@ pub const Interpreter = struct {
     // Errors that are not related to interpreting
     const ErrorSet = std.mem.Allocator.Error || error{InvalidCharacter};
 
-    pub fn init(alloc: *Allocator, source: []const u8, program: Program) Self {
+    pub fn init(alloc: *Allocator, source: []const u8, tree: Tree) Self {
         return Self{
             .alloc = alloc,
             .source = source,
-            .program = program,
+            .tree = tree,
             .curr = 0,
         };
     }
 
-    pub fn eval_next_stmt(self: *Self) !?StmtResult {
-        const stmts = self.program.stmts.items;
+    pub fn evalNextStmt(self: *Self) !?StmtResult {
+        const stmts = self.tree.stmts();
         if (self.curr < stmts.len) {
-            const res = try self.visitStmt(stmts[self.curr]);
+            const res = try self.evalStmt(stmts[self.curr]);
             self.curr += 1;
             return res;
         } else {
@@ -50,64 +46,72 @@ pub const Interpreter = struct {
         }
     }
 
-    fn visitStmt(self: *Self, stmt: Stmt) ErrorSet!StmtResult {
-        const expr_res = try self.visitExpr(stmt.expr.*);
+    fn evalStmt(self: *Self, idx: Node.Index) ErrorSet!StmtResult {
+        const stmt = self.tree.nodes.get(idx);
+        const stmt_type = switch (stmt.tag) {
+            .print_stmt => StmtType.print,
+            .expr_stmt => .expr,
+            else => unreachable, //only stmts should be handled here
+        };
+        const expr_res = try self.evalExpr(stmt.data.lhs);
 
         switch (expr_res) {
-            .ok => |val| return StmtResult{ .ok = Effect{ .stmt_type = stmt.stmt_type, .value = val } },
+            .ok => |val| return StmtResult{ .ok = Effect{ .stmt_type = stmt_type, .value = val } },
             .err => |e| return StmtResult{ .err = e },
         }
     }
 
-    fn visitExpr(self: *Self, expr: Expr) ErrorSet!ExprResult {
-        return switch (expr) {
-            .literal => |n| try self.visitLiteral(n),
-            .unary => |n| try self.visitUnary(n),
-            .binary => |n| try self.visitBinary(n),
-            .grouping => |n| try self.visitGrouping(n),
-            .invalid => unreachable, // because would have stopped at parsing stage
-        };
-    }
-
-    fn visitLiteral(self: *Self, literal: Literal) !ExprResult {
-        const res = switch (literal) {
-            .number => |span| {
+    fn evalExpr(self: *Self, idx: Node.Index) ErrorSet!ExprResult {
+        const expr = self.tree.nodes.get(idx);
+        return switch (expr.tag) {
+            .expr_unary => {
+                return self.evalUnary(expr);
+            },
+            .expr_binary => {
+                return self.evalBinary(expr);
+            },
+            .expr_grouping => {
+                return self.evalExpr(expr.data.lhs);
+            },
+            .literal_number => {
                 // error should be caught earlier in synatx/parsing
-                const x = try std.fmt.parseFloat(f64, span.slice(self.source));
+                const x = try std.fmt.parseFloat(f64, self.tree.tokenSlice(expr.main_token));
                 return ok(Value.number(x));
             },
-            .string => |span| {
+            .literal_string => {
                 var buf = ArrayList(u8).init(self.alloc);
-                try buf.writer().print("{s}", .{span.slice(self.source)});
+                try buf.writer().print("{s}", .{self.tree.tokenSlice(expr.main_token)});
                 return ok(Value.string(buf));
             },
-            .@"true" => return ok(Value.boolean(true)),
-            .@"false" => return ok(Value.boolean(false)),
-            .nil => return ok(Value.nil),
+            .literal_true => return ok(Value.boolean(true)),
+            .literal_false => return ok(Value.boolean(false)),
+            .literal_nil => return ok(Value.nil),
+            .expr_invalid => unreachable, // because would have stopped at parsing stage
+            else => unreachable, // logic error, all expr should be handled here only
         };
-
-        return ok(res);
     }
 
-    fn visitUnary(self: *Self, unary: Unary) ErrorSet!ExprResult {
-        const val_res = try self.visitExpr(unary.expr.*);
+    fn evalUnary(self: *Self, unary: Node) ErrorSet!ExprResult {
+        const val_res = try self.evalExpr(unary.data.lhs);
         const val = switch (val_res) {
             .ok => |val| val,
             .err => |e| return err(e),
         };
 
-        return switch (unary.op) {
+        const unary_op = self.tree.tokenType(unary.main_token);
+        return switch (unary_op) {
             .minus => switch (val) {
                 .number => |n| ok(Value.number(-n)),
                 else => err(Error.new(self.alloc, "value '{}' not supported for '-'", .{val})),
             },
             .bang => ok(Value.boolean(!isTruthy(val))),
+            else => unreachable, // logic error
         };
     }
 
-    fn visitBinary(self: *Self, binary: Binary) !ExprResult {
-        const left_res = try self.visitExpr(binary.left.*);
-        const right_res = try self.visitExpr(binary.right.*);
+    fn evalBinary(self: *Self, binary: Node) ErrorSet!ExprResult {
+        const left_res = try self.evalExpr(binary.data.lhs);
+        const right_res = try self.evalExpr(binary.data.rhs);
         // right and left val need to be var in case they need to be deinit
         // if there's an error
         var left_val = switch (left_res) {
@@ -119,7 +123,8 @@ pub const Interpreter = struct {
             .err => |e| return err(e),
         };
 
-        switch (binary.op) {
+        const binary_op = self.tree.tokenType(binary.main_token);
+        switch (binary_op) {
             .equal_equal => return ok(Value.boolean(left_val.equals(right_val))),
             .bang_equal => return ok(Value.boolean(!left_val.equals(right_val))),
             .plus => {
@@ -127,7 +132,7 @@ pub const Interpreter = struct {
                 switch (left_val) {
                     .number => |n1| switch (right_val) {
                         .number => |n2| return ok(Value.number(n1 + n2)),
-                        else => return self.checkNumberOperand(&right_val, binary.op),
+                        else => return self.checkNumberOperand(&right_val, binary_op),
                     },
                     .string => |s1| switch (right_val) {
                         .string => |s2| {
@@ -144,24 +149,24 @@ pub const Interpreter = struct {
                         },
                         else => {
                             s1.deinit();
-                            return err(Error.new(self.alloc, "value '{}' must be a string for op {}", .{ right_val, binary.op }));
+                            return err(Error.new(self.alloc, "value '{}' must be a string for op {}", .{ right_val, binary_op }));
                         },
                     },
-                    else => return err(Error.new(self.alloc, "value '{}' must be a number or string for op {}", .{ left_val, binary.op })),
+                    else => return err(Error.new(self.alloc, "value '{}' must be a number or string for op {}", .{ left_val, binary_op })),
                 }
             },
             else => {
                 // both sides must be numbers here
                 const left = switch (left_val) {
                     .number => |n| n,
-                    else => return self.checkNumberOperand(&left_val, binary.op),
+                    else => return self.checkNumberOperand(&left_val, binary_op),
                 };
                 const right = switch (right_val) {
                     .number => |n| n,
-                    else => return self.checkNumberOperand(&right_val, binary.op),
+                    else => return self.checkNumberOperand(&right_val, binary_op),
                 };
 
-                switch (binary.op) {
+                switch (binary_op) {
                     .minus => return ok(Value.number(left - right)),
                     .star => return ok(Value.number(left * right)),
                     .slash => return ok(Value.number(left / right)),
@@ -172,16 +177,13 @@ pub const Interpreter = struct {
                     .less_equal => return ok(Value.boolean(left <= right)),
                     .equal_equal => unreachable, //covered one layer up
                     .bang_equal => unreachable, //covered one layer up
+                    else => unreachable, // only binary ops covered here
                 }
             },
         }
     }
 
-    fn visitGrouping(self: *Self, grouping: Grouping) !ExprResult {
-        return self.visitExpr(grouping.expr.*);
-    }
-
-    fn checkNumberOperand(self: Self, val: *Value, op: BinaryOp) ExprResult {
+    fn checkNumberOperand(self: Self, val: *Value, op: TokenType) ExprResult {
         const e = switch (val.*) {
             .string => |s| err(Error.new(self.alloc, "value \"{s}\" must be a number for op {}", .{ s.items, op })),
             else => err(Error.new(self.alloc, "value '{s}' must be a number for op {}", .{ val, op })),
@@ -214,6 +216,11 @@ pub const StmtResult = union(enum) {
 pub const Effect = struct {
     stmt_type: StmtType,
     value: Value,
+};
+
+pub const StmtType = enum {
+    print,
+    expr,
 };
 
 // TODO get line somehow
