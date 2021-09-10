@@ -1,3 +1,31 @@
+//! AST
+//!
+//! The AST (Tree) contains holds references to source and tokens also, so that:
+//! - unneded conversions are avoided
+//! - unnecessary allocations avoided
+//! - easy indexing from AST back through tokens/source
+//!
+//! The implementation follows Zig's new AST memory layout, you can see notes on it
+//! at https://ziglang.org/download/0.8.0/release-notes.html#Reworked-Memory-Layout.
+//!
+//! Note that all Nodes are kept in the NodeList. Nodes can refer to at most two other
+//! nodes (lhs and rhs), so when more data needs to be referenced, the lhs and rhs are
+//! repurposed so that they point to a list of node indexes. These indexes are kept in
+//! a separate list of Node.Indexes called "extra_data", and they point back to Nodes
+//! in the NodeList. Tag type determines which set of logic to follow.
+//!
+//! For example, constructs like the "program" or a "function" reference a list of nodes
+//! (e.g. statements or fn params).
+//!
+//! In order to correctly pack the list of nodes indexes contiguously, the implementation
+//! makes use of a "scratch" space when parsing. Nodes get appended to the NodeList as
+//! needed, but their Node.Indexes get appended into scratch in a contiguous bunch. When
+//! the scope is exited, those contiguous indexes get appended onto extra_data, and their
+//! range (exclusive) is store in the lhs and rhs of the parent node.
+//!
+//! Using the `defer` pattern, when exiting scope the scratch list is truncated back
+//! to its scope-entry state. This handles nested invocations of parsing extra_data.
+
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
@@ -6,217 +34,122 @@ const tok = @import("./token.zig");
 const Token = tok.Token;
 const TokenType = tok.TokenType;
 
-/// temporarily just an Expr
-pub const Program = struct {
+pub const NodeList = std.MultiArrayList(Node);
+pub const TokenList = []const Token;
+
+pub const Tree = struct {
     alloc: *Allocator,
-    stmts: ArrayList(Stmt),
-
-    pub fn print_debug(self: Program, source: []const u8) void {
-        var printer = PrintAst{ .source = source };
-        printer.print(self);
-    }
-
-    pub fn deinit(self: *Program) void {
-        for (self.stmts.items) |*stmt| {
-            stmt.deinit(self.alloc);
-        }
-        self.stmts.deinit();
-    }
-};
-
-pub const Stmt = struct {
-    stmt_type: StmtType,
-    expr: *Expr,
-
-    pub fn deinit(self: *Stmt, alloc: *Allocator) void {
-        self.expr.deinit(alloc);
-        alloc.destroy(self.expr);
-    }
-};
-
-pub const StmtType = enum {
-    print,
-    expr,
-};
-
-pub const Expr = union(enum) {
-    literal: Literal,
-    unary: Unary,
-    binary: Binary,
-    grouping: Grouping,
-    // a marker so that we don't have to use exceptions
-    // or leave an undefined Expr when parsing and hit an error.
-    invalid,
-
-    /// Can be called directly during failure to parse (i.e. group failing on paren)
-    pub fn deinit(self: *Expr, alloc: *Allocator) void {
-        switch (self.*) {
-            .unary => |*n| n.deinit(alloc),
-            .binary => |*n| n.deinit(alloc),
-            .grouping => |*n| n.deinit(alloc),
-            else => {},
-        }
-    }
-};
-
-pub const Literal = union(enum) {
-    number: Span,
-    string: Span,
-    @"true",
-    @"false",
-    nil,
-
-    /// Only convert on program execution
-    const Span = struct {
-        start: u32,
-        len: u32,
-
-        const Self = @This();
-
-        pub fn slice(self: Self, bytes: []const u8) []const u8 {
-            return bytes[self.start .. self.start + self.len];
-        }
-    };
-};
-
-pub const Unary = struct {
-    op: UnaryOp,
-    expr: *Expr,
-
-    /// To be called only from root of AST
-    fn deinit(self: *Unary, alloc: *Allocator) void {
-        self.expr.deinit(alloc);
-        alloc.destroy(self.expr);
-    }
-};
-
-pub const UnaryOp = enum {
-    minus,
-    bang,
-
-    pub fn from_token(t: Token) UnaryOp {
-        return switch (t.token_type) {
-            TokenType.minus => .minus,
-            TokenType.bang => .bang,
-            else => std.debug.panic("logic bug in caller", .{}),
-        };
-    }
-};
-
-pub const Binary = struct {
-    left: *Expr,
-    op: BinaryOp,
-    right: *Expr,
-
-    /// To be called only from root of AST
-    fn deinit(self: *Binary, alloc: *Allocator) void {
-        self.left.deinit(alloc);
-        self.right.deinit(alloc);
-        alloc.destroy(self.left);
-        alloc.destroy(self.right);
-    }
-};
-
-pub const BinaryOp = enum {
-    equal_equal,
-    bang_equal,
-    less,
-    less_equal,
-    greater,
-    greater_equal,
-    plus,
-    minus,
-    star,
-    slash,
-
-    pub fn from_token(t: Token) BinaryOp {
-        return switch (t.token_type) {
-            TokenType.equal_equal => .equal_equal,
-            TokenType.bang_equal => .bang_equal,
-            TokenType.less => .less,
-            TokenType.less_equal => .less_equal,
-            TokenType.greater => .greater,
-            TokenType.greater_equal => .greater_equal,
-            TokenType.plus => .plus,
-            TokenType.minus => .minus,
-            TokenType.star => .star,
-            TokenType.slash => .slash,
-            else => std.debug.panic("logic bug in caller", .{}),
-        };
-    }
-};
-
-pub const Grouping = struct {
-    expr: *Expr,
-
-    /// To be called only from root of AST
-    fn deinit(self: *Grouping, alloc: *Allocator) void {
-        self.expr.deinit(alloc);
-        alloc.destroy(self.expr);
-    }
-};
-
-/// Visitor
-const PrintAst = struct {
     source: []const u8,
+    tokens: TokenList,
+    nodes: NodeList,
+    extra_data: []Node.Index,
 
-    const Self = @This();
+    pub fn deinit(self: *Tree) void {
+        self.nodes.deinit(self.alloc);
+        self.alloc.free(self.extra_data);
+    }
 
-    fn print(self: *Self, program: Program) void {
-        std.debug.print("ast: ", .{});
-        for (program.stmts.items) |stmt| {
-            self.visitStmt(stmt);
-            std.debug.print(";\n", .{});
+    pub fn debug_print(self: *Tree) void {
+        self.debug_print_node(0);
+    }
+
+    fn debug_print_node(self: *Tree, idx: Node.Index) void {
+        const node = self.nodes.get(idx);
+
+        switch (node.tag) {
+            .program => {
+                const stmt_indexes = self.extra_data[node.data.lhs..node.data.rhs];
+                for (stmt_indexes) |i| {
+                    self.debug_print_node(i);
+                    std.debug.print(";\n", .{});
+                }
+            },
+            .print_stmt => {
+                std.debug.print("printStmt: ", .{});
+                self.debug_print_node(node.data.lhs);
+            },
+            .expr_stmt => {
+                std.debug.print("exprStmt: ", .{});
+                self.debug_print_node(node.data.lhs);
+            },
+            .expr_unary => {
+                std.debug.print("(", .{});
+                std.debug.print("{s} ", .{self.tokenSlice(node.main_token)});
+                self.debug_print_node(node.data.lhs);
+                std.debug.print(") ", .{});
+            },
+            .expr_binary => {
+                std.debug.print("(", .{});
+                std.debug.print("{s} ", .{self.tokenSlice(node.main_token)});
+                self.debug_print_node(node.data.lhs);
+                self.debug_print_node(node.data.rhs);
+                std.debug.print(") ", .{});
+            },
+            .expr_grouping => {
+                std.debug.print("(group ", .{});
+                self.debug_print_node(node.data.lhs);
+                std.debug.print(") ", .{});
+            },
+            .expr_invalid => {
+                std.debug.print("invalidExpr", .{});
+            },
+            .literal_number => {
+                std.debug.print("{s} ", .{self.tokenSlice(node.main_token)});
+            },
+            .literal_string => {
+                std.debug.print("\"{s}\" ", .{self.tokenSlice(node.main_token)});
+            },
+            .literal_true => {
+                std.debug.print("true", .{});
+            },
+            .literal_false => {
+                std.debug.print("false", .{});
+            },
+            .literal_nil => {
+                std.debug.print("nil", .{});
+            },
         }
     }
 
-    fn visitStmt(self: *Self, stmt: Stmt) void {
-        switch (stmt.stmt_type) {
-            .expr => std.debug.print("exprStmt: ", .{}),
-            .print => std.debug.print("printStmt: ", .{}),
-        }
-        self.visitExpr(stmt.expr.*);
+    fn tokenSlice(self: Tree, idx: Token.Index) []const u8 {
+        const token = self.tokens[idx];
+        return token.lexeme(self.source);
     }
+};
 
-    fn visitExpr(self: *Self, expr: Expr) void {
-        switch (expr) {
-            .literal => |n| self.visitLiteral(n),
-            .unary => |n| self.visitUnary(n),
-            .binary => |n| self.visitBinary(n),
-            .grouping => |n| self.visitGrouping(n),
-            .invalid => std.debug.print("invalidExpr", .{}),
-        }
-    }
+pub const Node = struct {
+    tag: Tag,
+    main_token: Token.Index,
+    data: Data,
 
-    fn visitLiteral(self: *Self, literal: Literal) void {
-        _ = self;
-        switch (literal) {
-            .number => |span| std.debug.print("{s} ", .{span.slice(self.source)}),
-            .string => |span| std.debug.print("\"{s}\" ", .{span.slice(self.source)}),
-            .@"true" => std.debug.print("true", .{}),
-            .@"false" => std.debug.print("false", .{}),
-            .nil => std.debug.print("nil", .{}),
-        }
-    }
+    pub const Index = u32;
 
-    fn visitUnary(self: *Self, unary: Unary) void {
-        std.debug.print("(", .{});
-        std.debug.print("{s} ", .{unary.op});
-        self.visitExpr(unary.expr.*);
-        std.debug.print(") ", .{});
-    }
+    pub const Tag = enum {
+        // main_token is [0], sub_list[lhs... rhs], stored in extra_data
+        program,
+        // main_token is `print`, lhs is expr idx
+        print_stmt,
+        // main_token is 1st token, lhs is expr idx
+        expr_stmt,
+        // main token is op, lhs is expr idx, rhs is unused
+        expr_unary,
+        // main token is op, lhs is lhs expr idx, rhs is rhs expr idx
+        expr_binary,
+        // main token is left paren, lhs is expr idx, rhs is unused
+        expr_grouping,
+        // all unused
+        expr_invalid,
 
-    fn visitBinary(self: *Self, binary: Binary) void {
-        std.debug.print("(", .{});
-        std.debug.print("{s} ", .{binary.op});
-        self.visitExpr(binary.left.*);
-        self.visitExpr(binary.right.*);
-        std.debug.print(") ", .{});
-    }
+        // literals have no data
+        literal_number,
+        literal_string,
+        literal_true,
+        literal_false,
+        literal_nil,
+    };
 
-    fn visitGrouping(self: *Self, grouping: Grouping) void {
-        std.debug.print("(group ", .{});
-        self.visitExpr(grouping.expr.*);
-        std.debug.print(") ", .{});
-    }
+    pub const Data = struct {
+        lhs: Index,
+        rhs: Index,
+    };
 };

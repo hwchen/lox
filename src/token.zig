@@ -55,6 +55,8 @@ pub const Token = struct {
     start: u32,
     len: u32,
 
+    pub const Index = u32;
+
     pub fn line(self: Token, source: []const u8) u32 {
         return util.line(self.start, source);
     }
