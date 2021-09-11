@@ -66,7 +66,7 @@ pub const Parser = struct {
         });
 
         while (!self.isAtEnd()) {
-            const stmt = try self.parseStmt();
+            const stmt = try self.parseDeclaration();
             try self.scratch.append(stmt);
         }
 
@@ -90,9 +90,9 @@ pub const Parser = struct {
 
     fn parseDeclaration(self: *Self) !Node.Index {
         return if (self.match(.@"var"))
-            self.parseVarDecl()
+            try self.parseVarDecl()
         else
-            self.parseStmt();
+            try self.parseStmt();
     }
 
     fn parseVarDecl(self: *Self) !Node.Index {
@@ -100,11 +100,11 @@ pub const Parser = struct {
         _ = self.advance();
 
         const var_decl = if (self.match(.equal)) blk: {
-            const expr = try self.parse_expr();
+            const expr = try self.parseExpr();
             break :blk try self.addNode(.{
                 .tag = .stmt_var_decl_init,
                 .main_token = var_ident,
-                .data = .{ .lhs = expr, .rsh = undefined },
+                .data = .{ .lhs = expr, .rhs = undefined },
             });
         } else try self.addNode(.{
             .tag = .stmt_var_decl,
@@ -112,9 +112,9 @@ pub const Parser = struct {
             .data = undefined,
         });
 
-        if (self.consume(.semicolon, "Expected ; at end of statement")) |err| {
+        if (self.consume(.semicolon, "Expected ; at end of variable declaration")) |err| {
             try self.errors.errors.append(err);
-            _ = self.setNode(expr, .{ .tag = .expr_invalid, .main_token = undefined, .data = undefined });
+            _ = self.setNode(var_decl, .{ .tag = .expr_invalid, .main_token = undefined, .data = undefined });
             _ = self.advance();
         }
 

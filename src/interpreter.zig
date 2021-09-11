@@ -1,5 +1,6 @@
 const std = @import("std");
 const ast = @import("./ast.zig");
+const env = @import("./environment.zig");
 const token = @import("./token.zig");
 const value = @import("./value.zig");
 
@@ -8,6 +9,7 @@ const ArrayList = std.ArrayList;
 const Tree = ast.Tree;
 const Node = ast.Node;
 const Expr = ast.Expr;
+const Env = env.Environment;
 const Value = value.Value;
 const TokenType = token.TokenType;
 
@@ -19,6 +21,7 @@ pub const Interpreter = struct {
     alloc: *Allocator,
     source: []const u8,
     tree: Tree,
+    env: Env,
     curr: u64,
 
     const Self = @This();
@@ -31,8 +34,13 @@ pub const Interpreter = struct {
             .alloc = alloc,
             .source = source,
             .tree = tree,
+            .env = Env.init(alloc),
             .curr = 0,
         };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.env.deinit();
     }
 
     pub fn evalNextStmt(self: *Self) !?StmtResult {
@@ -48,16 +56,34 @@ pub const Interpreter = struct {
 
     fn evalStmt(self: *Self, idx: Node.Index) ErrorSet!StmtResult {
         const stmt = self.tree.nodes.get(idx);
-        const stmt_type = switch (stmt.tag) {
-            .stmt_print => StmtType.print,
-            .stmt_expr => .expr,
-            else => unreachable, //only stmts should be handled here
-        };
-        const expr_res = try self.evalExpr(stmt.data.lhs);
 
-        switch (expr_res) {
-            .ok => |val| return StmtResult{ .ok = Effect{ .stmt_type = stmt_type, .value = val } },
-            .err => |e| return StmtResult{ .err = e },
+        switch (stmt.tag) {
+            .stmt_print => {
+                const expr_res = try self.evalExpr(stmt.data.lhs);
+                switch (expr_res) {
+                    .ok => |val| return StmtResult{ .ok = Effect{ .print = val } },
+                    .err => |e| return StmtResult{ .err = e },
+                }
+            },
+            .stmt_expr => {
+                // just an expr in a statement has no effect, and just returns nil
+                return StmtResult{ .ok = .no_effect };
+            },
+            .stmt_var_decl => {
+                try self.env.define(self.tree.tokenSlice(stmt.main_token), .nil);
+                return StmtResult{ .ok = .no_effect };
+            },
+            .stmt_var_decl_init => {
+                const expr_res = try self.evalExpr(stmt.data.lhs);
+                switch (expr_res) {
+                    .ok => |val| {
+                        try self.env.define(self.tree.tokenSlice(stmt.main_token), val);
+                        return StmtResult{ .ok = .no_effect };
+                    },
+                    .err => |e| return StmtResult{ .err = e },
+                }
+            },
+            else => unreachable, //only statements should be handled here
         }
     }
 
@@ -69,6 +95,13 @@ pub const Interpreter = struct {
             },
             .expr_binary => {
                 return self.evalBinary(expr);
+            },
+            .expr_variable => {
+                if (self.env.get(self.tree.tokenSlice(expr.main_token))) |val| {
+                    return ok(val);
+                } else {
+                    return err(Error.new(self.alloc, "reference to undeclared variable: {s}", .{self.tree.tokenSlice(expr.main_token)}));
+                }
             },
             .expr_grouping => {
                 return self.evalExpr(expr.data.lhs);
@@ -213,14 +246,9 @@ pub const StmtResult = union(enum) {
     err: Error,
 };
 
-pub const Effect = struct {
-    stmt_type: StmtType,
-    value: Value,
-};
-
-pub const StmtType = enum {
-    print,
-    expr,
+pub const Effect = union(enum) {
+    print: Value,
+    no_effect,
 };
 
 // TODO get line somehow

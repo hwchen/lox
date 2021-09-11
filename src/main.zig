@@ -118,13 +118,13 @@ const Lox = struct {
         }
 
         var interpreter = Interpreter.init(alloc, source, ast);
+        defer interpreter.deinit();
         while (try interpreter.evalNextStmt()) |*stmt_res| {
             switch (stmt_res.*) {
-                .ok => |res| {
-                    // Currently LoxResult never returns "ok" because that's always handled here.
-                    switch (res.stmt_type) {
-                        .print => std.debug.print("{}\n", .{res.value}),
-                        .expr => {},
+                .ok => |effect| {
+                    switch (effect) {
+                        .print => |val| std.debug.print("{}\n", .{val}),
+                        .no_effect => {},
                     }
                 },
                 .err => |*e| {
