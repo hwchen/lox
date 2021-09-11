@@ -77,6 +77,13 @@ pub const Tree = struct {
                 std.debug.print("exprStmt: ", .{});
                 self.debug_print_node(node.data.lhs);
             },
+            .stmt_var_decl => {
+                std.debug.print("varDeclStmt: {s} ", .{self.tokenSlice(node.main_token)});
+            },
+            .stmt_var_decl_init => {
+                std.debug.print("varDeclStmtInit: {s} = ", .{self.tokenSlice(node.main_token)});
+                self.debug_print_node(node.data.lhs);
+            },
             .expr_unary => {
                 std.debug.print("(", .{});
                 std.debug.print("{s} ", .{self.tokenSlice(node.main_token)});
@@ -94,6 +101,9 @@ pub const Tree = struct {
                 std.debug.print("(group ", .{});
                 self.debug_print_node(node.data.lhs);
                 std.debug.print(") ", .{});
+            },
+            .expr_variable => {
+                std.debug.print("{s} ", .{self.tokenSlice(node.main_token)});
             },
             .expr_invalid => {
                 std.debug.print("invalidExpr", .{});
@@ -141,12 +151,18 @@ pub const Node = struct {
         stmt_print,
         // main_token is 1st token, lhs is expr idx
         stmt_expr,
+        // main_token is var ident, lhs is unused, rhs is unused
+        stmt_var_decl,
+        // main_token is var ident, lhs is initializer expr, rhs is unused
+        stmt_var_decl_init,
         // main token is op, lhs is expr idx, rhs is unused
         expr_unary,
         // main token is op, lhs is lhs expr idx, rhs is rhs expr idx
         expr_binary,
         // main token is left paren, lhs is expr idx, rhs is unused
         expr_grouping,
+        // main token is ident, lhs and rhs unused
+        expr_variable,
         // all unused
         expr_invalid,
 

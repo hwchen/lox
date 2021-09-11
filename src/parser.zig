@@ -88,6 +88,39 @@ pub const Parser = struct {
         };
     }
 
+    fn parseDeclaration(self: *Self) !Node.Index {
+        return if (self.match(.@"var"))
+            self.parseVarDecl()
+        else
+            self.parseStmt();
+    }
+
+    fn parseVarDecl(self: *Self) !Node.Index {
+        const var_ident = self.curr_idx();
+        _ = self.advance();
+
+        const var_decl = if (self.match(.equal)) blk: {
+            const expr = try self.parse_expr();
+            break :blk try self.addNode(.{
+                .tag = .stmt_var_decl_init,
+                .main_token = var_ident,
+                .data = .{ .lhs = expr, .rsh = undefined },
+            });
+        } else try self.addNode(.{
+            .tag = .stmt_var_decl,
+            .main_token = var_ident,
+            .data = undefined,
+        });
+
+        if (self.consume(.semicolon, "Expected ; at end of statement")) |err| {
+            try self.errors.errors.append(err);
+            _ = self.setNode(expr, .{ .tag = .expr_invalid, .main_token = undefined, .data = undefined });
+            _ = self.advance();
+        }
+
+        return var_decl;
+    }
+
     fn parseStmt(self: *Self) !Node.Index {
         const main_token = self.curr_idx();
         const tag = if (self.match(.@"print")) Node.Tag.stmt_print else .stmt_expr;
@@ -97,7 +130,6 @@ pub const Parser = struct {
         if (self.consume(.semicolon, "Expected ; at end of statement")) |err| {
             try self.errors.errors.append(err);
             _ = self.setNode(expr, .{ .tag = .expr_invalid, .main_token = undefined, .data = undefined });
-
             // need to advance, otherwise will infinite loop
             _ = self.advance();
         }
@@ -205,6 +237,13 @@ pub const Parser = struct {
         if (self.match(.number)) {
             return try self.addNode(.{
                 .tag = .literal_number,
+                .main_token = self.previous_idx(),
+                .data = undefined,
+            });
+        }
+        if (self.match(.identifier)) {
+            return try self.addNode(.{
+                .tag = .expr_variable,
                 .main_token = self.previous_idx(),
                 .data = undefined,
             });
