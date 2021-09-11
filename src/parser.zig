@@ -90,7 +90,7 @@ pub const Parser = struct {
 
     fn parseStmt(self: *Self) !Node.Index {
         const main_token = self.curr_idx();
-        const tag = if (self.match(.@"print")) Node.Tag.print_stmt else .expr_stmt;
+        const tag = if (self.match(.@"print")) Node.Tag.stmt_print else .stmt_expr;
 
         var expr = try self.parseExpr();
 

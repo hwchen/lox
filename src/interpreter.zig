@@ -49,8 +49,8 @@ pub const Interpreter = struct {
     fn evalStmt(self: *Self, idx: Node.Index) ErrorSet!StmtResult {
         const stmt = self.tree.nodes.get(idx);
         const stmt_type = switch (stmt.tag) {
-            .print_stmt => StmtType.print,
-            .expr_stmt => .expr,
+            .stmt_print => StmtType.print,
+            .stmt_expr => .expr,
             else => unreachable, //only stmts should be handled here
         };
         const expr_res = try self.evalExpr(stmt.data.lhs);

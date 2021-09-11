@@ -69,11 +69,11 @@ pub const Tree = struct {
                     std.debug.print(";\n", .{});
                 }
             },
-            .print_stmt => {
+            .stmt_print => {
                 std.debug.print("printStmt: ", .{});
                 self.debug_print_node(node.data.lhs);
             },
-            .expr_stmt => {
+            .stmt_expr => {
                 std.debug.print("exprStmt: ", .{});
                 self.debug_print_node(node.data.lhs);
             },
@@ -138,9 +138,9 @@ pub const Node = struct {
         // main_token is [0], sub_list[lhs... rhs], stored in extra_data
         program,
         // main_token is `print`, lhs is expr idx
-        print_stmt,
+        stmt_print,
         // main_token is 1st token, lhs is expr idx
-        expr_stmt,
+        stmt_expr,
         // main token is op, lhs is expr idx, rhs is unused
         expr_unary,
         // main token is op, lhs is lhs expr idx, rhs is rhs expr idx
