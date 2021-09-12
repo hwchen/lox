@@ -113,7 +113,7 @@ pub const Interpreter = struct {
                     .err => |e| return err(e),
                 };
                 if (self.env.assign(self.tree.tokenSlice(expr.main_token), val)) |_| {
-                    return ok(Value.nil);
+                    return ok(val);
                 } else |_| {
                     return err(Error.new(self.alloc, "tried to assign to undeclared variable: {s}", .{self.tree.tokenSlice(expr.main_token)}));
                 }
