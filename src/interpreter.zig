@@ -66,8 +66,11 @@ pub const Interpreter = struct {
                 }
             },
             .stmt_expr => {
-                // just an expr in a statement has no effect, and just returns nil
-                return StmtResult{ .ok = .no_effect };
+                const expr_res = try self.evalExpr(stmt.data.lhs);
+                switch (expr_res) {
+                    .ok => |_| return StmtResult{ .ok = .no_effect },
+                    .err => |e| return StmtResult{ .err = e },
+                }
             },
             .stmt_var_decl => {
                 try self.env.define(self.tree.tokenSlice(stmt.main_token), .nil);
@@ -101,6 +104,18 @@ pub const Interpreter = struct {
                     return ok(val);
                 } else {
                     return err(Error.new(self.alloc, "reference to undeclared variable: {s}", .{self.tree.tokenSlice(expr.main_token)}));
+                }
+            },
+            .expr_assignment => {
+                const val_res = try self.evalExpr(expr.data.lhs);
+                const val = switch (val_res) {
+                    .ok => |val| val,
+                    .err => |e| return err(e),
+                };
+                if (self.env.assign(self.tree.tokenSlice(expr.main_token), val)) |_| {
+                    return ok(Value.nil);
+                } else |_| {
+                    return err(Error.new(self.alloc, "tried to assign to undeclared variable: {s}", .{self.tree.tokenSlice(expr.main_token)}));
                 }
             },
             .expr_grouping => {

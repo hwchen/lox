@@ -137,7 +137,31 @@ pub const Parser = struct {
     }
 
     fn parseExpr(self: *Self) !Node.Index {
-        return try self.parseEquality();
+        return try self.parseAssignment();
+    }
+
+    fn parseAssignment(self: *Self) Allocator.Error!Node.Index {
+        var expr = try self.parseEquality();
+
+        // If expr is a variable and is followed by an `=`, then it's assignment.
+        // Convert the `expr` node from above.
+        if (self.match(.equal)) {
+            const val = try self.parseAssignment();
+
+            const expr_node = self.nodes.get(expr);
+            if (expr_node.tag == .expr_variable) {
+                _ = self.setNode(expr, .{
+                    .tag = .expr_assignment,
+                    .main_token = expr_node.main_token,
+                    .data = .{ .lhs = val, .rhs = undefined },
+                });
+            } else {
+                try self.errors.errors.append(Error.new(self.alloc, self.peek(), "Expected assignment, but lhs is not a variable"));
+                return try self.addNode(.{ .tag = .expr_invalid, .main_token = undefined, .data = undefined });
+            }
+        }
+
+        return expr;
     }
 
     fn parseEquality(self: *Self) !Node.Index {
@@ -192,7 +216,7 @@ pub const Parser = struct {
         return expr;
     }
 
-    fn parseUnary(self: *Self) std.mem.Allocator.Error!Node.Index {
+    fn parseUnary(self: *Self) Allocator.Error!Node.Index {
         if (self.match_any(&[_]TokenType{ .bang, .minus })) {
             const op = self.previous_idx();
             var expr = try self.parseUnary();

@@ -105,6 +105,10 @@ pub const Tree = struct {
             .expr_variable => {
                 std.debug.print("{s} ", .{self.tokenSlice(node.main_token)});
             },
+            .expr_assignment => {
+                std.debug.print("{s} = ", .{self.tokenSlice(node.main_token)});
+                self.debug_print_node(node.data.lhs);
+            },
             .expr_invalid => {
                 std.debug.print("invalidExpr", .{});
             },
@@ -163,6 +167,8 @@ pub const Node = struct {
         expr_grouping,
         // main token is ident, lhs and rhs unused
         expr_variable,
+        // main token is ident, lhs is expr, rhs unused
+        expr_assignment,
         // all unused
         expr_invalid,
 

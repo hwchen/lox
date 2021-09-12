@@ -27,4 +27,12 @@ pub const Environment = struct {
     pub fn get(self: Self, name: []const u8) ?Value {
         return self.values.get(name);
     }
+
+    pub fn assign(self: *Self, name: []const u8, val: Value) !void {
+        if (self.values.getEntry(name)) |kv| {
+            kv.value_ptr.* = val;
+        } else {
+            return error.undefined_variable;
+        }
+    }
 };
