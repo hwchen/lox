@@ -117,7 +117,7 @@ const Lox = struct {
             return;
         }
 
-        var interpreter = Interpreter.init(alloc, source, ast);
+        var interpreter = try Interpreter.init(alloc, source, ast);
         defer interpreter.deinit();
         while (try interpreter.evalNextStmt()) |*stmt_res| {
             switch (stmt_res.*) {

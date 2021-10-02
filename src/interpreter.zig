@@ -29,12 +29,12 @@ pub const Interpreter = struct {
     // Errors that are not related to interpreting
     const ErrorSet = std.mem.Allocator.Error || error{InvalidCharacter};
 
-    pub fn init(alloc: *Allocator, source: []const u8, tree: Tree) Self {
+    pub fn init(alloc: *Allocator, source: []const u8, tree: Tree) !Self {
         return Self{
             .alloc = alloc,
             .source = source,
             .tree = tree,
-            .env = Env.init(alloc),
+            .env = try Env.init(alloc),
             .curr = 0,
         };
     }
