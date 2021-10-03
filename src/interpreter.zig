@@ -1,3 +1,9 @@
+//! Interpreter uses Environments to keep track of scope (of blocks).
+//! Each Environment's Scopes are associated with a Block Node Index.
+//!
+//! Entering a Block scope is handled in evalStmt `.stmt_block`
+//! Exiting a Block scope is handled in evalNextStmt, because all the statements in the current block have been executed.
+
 const std = @import("std");
 const ast = @import("./ast.zig");
 const env = @import("./environment.zig");
@@ -22,7 +28,6 @@ pub const Interpreter = struct {
     source: []const u8,
     tree: Tree,
     env: Env,
-    curr: u64,
 
     const Self = @This();
 
@@ -35,7 +40,6 @@ pub const Interpreter = struct {
             .source = source,
             .tree = tree,
             .env = try Env.init(alloc),
-            .curr = 0,
         };
     }
 
@@ -43,19 +47,38 @@ pub const Interpreter = struct {
         self.env.deinit();
     }
 
-    pub fn evalNextStmt(self: *Self) !?StmtResult {
-        const stmts = self.tree.stmts();
-        if (self.curr < stmts.len) {
-            const res = try self.evalStmt(stmts[self.curr]);
-            self.curr += 1;
+    pub fn evalNextStmt(self: *Self) ErrorSet!?StmtResult {
+        // Gets statements from the current block being executed.
+        const stmts = self.tree.block_stmts(self.env.current_block());
+        const curr = self.env.curr();
+        if (curr < stmts.len) {
+            const res = try self.evalStmt(stmts[curr]);
+            _ = self.env.increment_curr();
             return res;
         } else {
-            return null;
+            // try with the parent scope's next statement after block
+            switch (self.env.exit_scope()) {
+                .exit_local => {
+                    std.log.debug("BLOCK: exit scope", .{});
+                    const parent_curr = self.env.increment_curr();
+                    const parent_stmts = self.tree.block_stmts(self.env.current_block());
+                    if (parent_curr < parent_stmts.len) {
+                        return try self.evalNextStmt();
+                    } else {
+                        return null;
+                    }
+                },
+                .exit_global => {
+                    std.log.debug("EXIT: global scope", .{});
+                    return null;
+                },
+            }
         }
     }
 
     fn evalStmt(self: *Self, idx: Node.Index) ErrorSet!StmtResult {
         const stmt = self.tree.nodes.get(idx);
+        std.log.debug("EVAL_STMT: {}", .{stmt});
 
         switch (stmt.tag) {
             .stmt_print => {
@@ -70,6 +93,29 @@ pub const Interpreter = struct {
                 switch (expr_res) {
                     .ok => |_| return StmtResult{ .ok = .no_effect },
                     .err => |e| return StmtResult{ .err = e },
+                }
+            },
+            .stmt_block => {
+                // Execute a statement inside of a block
+                // Need to check if the block_ref here is the same as the
+                // environment's current scope. If not, add a new scope before
+                // executing
+                //
+                // self.env.curr() automatically keeps track of the current scope.
+                const block_ref = idx;
+                if (!self.env.is_current_block(block_ref)) {
+                    std.log.debug("BLOCK: enter scope", .{});
+                    try self.env.enter_scope(block_ref);
+                }
+                const block_stmts = self.tree.block_stmts(block_ref);
+                const curr = self.env.curr();
+                if (curr < block_stmts.len) {
+                    const res = try self.evalStmt(block_stmts[curr]);
+                    return res;
+                } else {
+                    // shouldn't reach this branch; if the end of the scope is reached,
+                    // it will be caught in evalNextStmt
+                    unreachable;
                 }
             },
             .stmt_var_decl => {

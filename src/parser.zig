@@ -62,7 +62,7 @@ pub const Parser = struct {
         _ = try self.addNode(.{
             .tag = .program,
             .main_token = 0,
-            .data = .{ .lhs = 37, .rhs = 27 },
+            .data = .{ .lhs = undefined, .rhs = undefined },
         });
 
         while (!self.isAtEnd()) {
@@ -122,6 +122,10 @@ pub const Parser = struct {
     }
 
     fn parseStmt(self: *Self) !Node.Index {
+        // parse a block
+        if (self.match(.left_brace)) return self.parseBlock();
+
+        // parse other statements
         const main_token = self.curr_idx();
         const tag = if (self.match(.@"print")) Node.Tag.stmt_print else .stmt_expr;
 
@@ -134,6 +138,42 @@ pub const Parser = struct {
             _ = self.advance();
         }
         return try self.addNode(.{ .tag = tag, .main_token = main_token, .data = .{ .lhs = expr, .rhs = undefined } });
+    }
+
+    fn parseBlock(self: *Self) Allocator.Error!Node.Index {
+        // Uses scratch space, so must note where the current scratch space starts
+        const scratch_top = self.scratch.items.len;
+        defer self.scratch.shrinkRetainingCapacity(scratch_top);
+
+        // The statements it refers to must be calculated later
+        const block_node = try self.addNode(.{
+            .tag = .stmt_block,
+            .main_token = self.previous_idx(),
+            .data = .{ .lhs = undefined, .rhs = undefined },
+        });
+
+        while (!self.check(.right_brace) and !self.isAtEnd()) {
+            const stmt = try self.parseDeclaration();
+            try self.scratch.append(stmt);
+        }
+
+        const start = self.extra_data.items.len + scratch_top;
+        const end = start + self.scratch.items.len - scratch_top;
+        self.nodes.items(.data)[block_node] = .{
+            .lhs = @intCast(Node.Index, start),
+            .rhs = @intCast(Node.Index, end),
+        };
+
+        try self.extra_data.appendSlice(self.scratch.items);
+
+        if (self.consume(.right_brace, "Expected } at end of block")) |err| {
+            try self.errors.errors.append(err);
+            _ = self.setNode(block_node, .{ .tag = .expr_invalid, .main_token = undefined, .data = undefined });
+            // need to advance, otherwise will infinite loop
+            _ = self.advance();
+        }
+
+        return block_node;
     }
 
     fn parseExpr(self: *Self) !Node.Index {

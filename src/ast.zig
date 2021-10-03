@@ -50,8 +50,12 @@ pub const Tree = struct {
     }
 
     pub fn stmts(self: *Tree) []Node.Index {
-        const root = self.nodes.get(0);
-        return self.extra_data[root.data.lhs..root.data.rhs];
+        return self.block_stmts(0);
+    }
+
+    pub fn block_stmts(self: *Tree, idx: Node.Index) []Node.Index {
+        const node = self.nodes.get(idx);
+        return self.extra_data[node.data.lhs..node.data.rhs];
     }
 
     pub fn debug_print(self: *Tree) void {
@@ -76,6 +80,15 @@ pub const Tree = struct {
             .stmt_expr => {
                 std.debug.print("exprStmt: ", .{});
                 self.debug_print_node(node.data.lhs);
+            },
+            .stmt_block => {
+                std.debug.print("block: (", .{});
+                const stmt_indexes = self.extra_data[node.data.lhs..node.data.rhs];
+                for (stmt_indexes) |i| {
+                    self.debug_print_node(i);
+                    std.debug.print("; ", .{});
+                }
+                std.debug.print(")", .{});
             },
             .stmt_var_decl => {
                 std.debug.print("varDeclStmt: {s} ", .{self.tokenSlice(node.main_token)});
@@ -155,6 +168,8 @@ pub const Node = struct {
         stmt_print,
         // main_token is 1st token, lhs is expr idx
         stmt_expr,
+        // main token is left hand bracket, sub_list[lhs ... rhs] is store in extra data
+        stmt_block,
         // main_token is var ident, lhs is unused, rhs is unused
         stmt_var_decl,
         // main_token is var ident, lhs is initializer expr, rhs is unused
