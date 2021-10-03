@@ -48,31 +48,36 @@ pub const Interpreter = struct {
     }
 
     pub fn evalNextStmt(self: *Self) ErrorSet!?StmtResult {
+        std.log.debug("EVAL NEXT STMT", .{});
         // Gets statements from the current block being executed.
-        const stmts = self.tree.block_stmts(self.env.current_block());
-        const curr = self.env.curr();
+        var stmts = self.tree.block_stmts(self.env.current_block());
+        var curr = self.env.curr();
+
         if (curr < stmts.len) {
             const res = try self.evalStmt(stmts[curr]);
             _ = self.env.increment_curr();
             return res;
         } else {
             // try with the parent scope's next statement after block
-            switch (self.env.exit_scope()) {
-                .exit_local => {
-                    std.log.debug("BLOCK: exit scope", .{});
-                    const parent_curr = self.env.increment_curr();
-                    const parent_stmts = self.tree.block_stmts(self.env.current_block());
-                    if (parent_curr < parent_stmts.len) {
-                        return try self.evalNextStmt();
-                    } else {
+            // rewind up to previous block that has a statement to execute that's not the
+            // end of a block
+            while (curr >= stmts.len) {
+                switch (self.env.exit_scope()) {
+                    .exit_local => {
+                        std.log.debug("BLOCK: exit scope", .{});
+                        stmts = self.tree.block_stmts(self.env.current_block());
+                        curr = self.env.curr();
+                        continue;
+                    },
+                    .exit_global => {
+                        std.log.debug("EXIT: global scope", .{});
                         return null;
-                    }
-                },
-                .exit_global => {
-                    std.log.debug("EXIT: global scope", .{});
-                    return null;
-                },
+                    },
+                }
             }
+            _ = self.env.increment_curr();
+            const res = try self.evalStmt(stmts[curr]);
+            return res;
         }
     }
 
