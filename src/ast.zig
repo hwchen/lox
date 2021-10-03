@@ -154,6 +154,21 @@ pub const Tree = struct {
     }
 };
 
+pub fn debug_nodes(nodes: *NodeList) void {
+    std.log.debug("NODES", .{});
+    var i: usize = 0;
+    while (i < nodes.slice().len) : (i += 1) {
+        std.log.debug("{d:02} -> {}", .{ i, nodes.get(i) });
+    }
+}
+
+pub fn debug_node_index_list(comptime header: []const u8, extra_data: []Node.Index) void {
+    std.log.debug(header, .{});
+    for (extra_data) |node_idx, i| {
+        std.log.debug("{d:02} -> {}", .{ i, node_idx });
+    }
+}
+
 pub const Node = struct {
     tag: Tag,
     main_token: Token.Index,

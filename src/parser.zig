@@ -71,6 +71,7 @@ pub const Parser = struct {
         }
 
         const start = self.extra_data.items.len;
+        std.debug.print("start root: {}\n", .{start});
         const end = start + self.scratch.items.len;
         self.nodes.items(.data)[0] = .{
             .lhs = @intCast(Node.Index, start),
@@ -78,6 +79,9 @@ pub const Parser = struct {
         };
 
         try self.extra_data.appendSlice(self.scratch.items);
+
+        ast.debug_nodes(&self.nodes);
+        ast.debug_node_index_list("EXTRA DATA", self.extra_data.items);
 
         return Tree{
             .alloc = self.alloc,
@@ -141,6 +145,7 @@ pub const Parser = struct {
     }
 
     fn parseBlock(self: *Self) Allocator.Error!Node.Index {
+        std.log.debug("PARSE BLOCK", .{});
         // Uses scratch space, so must note where the current scratch space starts
         const scratch_top = self.scratch.items.len;
         defer self.scratch.shrinkRetainingCapacity(scratch_top);
@@ -157,14 +162,18 @@ pub const Parser = struct {
             try self.scratch.append(stmt);
         }
 
-        const start = self.extra_data.items.len + scratch_top;
+        // Note that start is extra_data len + scratch_top, because
+        // TODO why? also fix exiting blocks, there's a bug
+        const start = self.extra_data.items.len;
         const end = start + self.scratch.items.len - scratch_top;
         self.nodes.items(.data)[block_node] = .{
             .lhs = @intCast(Node.Index, start),
             .rhs = @intCast(Node.Index, end),
         };
 
-        try self.extra_data.appendSlice(self.scratch.items);
+        try self.extra_data.appendSlice(self.scratch.items[scratch_top..]);
+        ast.debug_node_index_list("SCRATCH", self.scratch.items);
+        ast.debug_node_index_list("EXTRA DATA", self.extra_data.items);
 
         if (self.consume(.right_brace, "Expected } at end of block")) |err| {
             try self.errors.errors.append(err);
@@ -172,6 +181,8 @@ pub const Parser = struct {
             // need to advance, otherwise will infinite loop
             _ = self.advance();
         }
+
+        std.log.debug("END PARSE BLOCK", .{});
 
         return block_node;
     }
