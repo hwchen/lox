@@ -14,7 +14,7 @@ const TokenList = ast.TokenList;
 
 /// Produces an AST. It's the caller's responsibility to deallocate the AST.
 pub const Parser = struct {
-    alloc: *Allocator,
+    alloc: Allocator,
     source: []const u8,
     tokens: []const Token,
     errors: Errors,
@@ -27,7 +27,7 @@ pub const Parser = struct {
 
     const Self = @This();
 
-    pub fn init(alloc: *Allocator, tokens: []const Token, source: []const u8) Self {
+    pub fn init(alloc: Allocator, tokens: []const Token, source: []const u8) Self {
         return Self{
             .alloc = alloc,
             .source = source,
@@ -432,7 +432,7 @@ pub const Error = struct {
     token: Token,
     msg: ArrayList(u8),
 
-    pub fn new(alloc: *Allocator, token: Token, msg: []const u8) Error {
+    pub fn new(alloc: Allocator, token: Token, msg: []const u8) Error {
         var buf = ArrayList(u8).init(alloc);
         // if there's an error trying to make error msg, just exit
         buf.writer().print("{s}", .{msg}) catch unreachable;

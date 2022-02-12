@@ -24,7 +24,7 @@ const TokenType = token.TokenType;
 /// It's easy to return a ExprResult at this stage because there's no need to collect errors, either
 /// a statement succeeds or fails.
 pub const Interpreter = struct {
-    alloc: *Allocator,
+    alloc: Allocator,
     source: []const u8,
     tree: Tree,
     env: Env,
@@ -34,7 +34,7 @@ pub const Interpreter = struct {
     // Errors that are not related to interpreting
     const ErrorSet = std.mem.Allocator.Error || error{InvalidCharacter};
 
-    pub fn init(alloc: *Allocator, source: []const u8, tree: Tree) !Self {
+    pub fn init(alloc: Allocator, source: []const u8, tree: Tree) !Self {
         return Self{
             .alloc = alloc,
             .source = source,
@@ -321,7 +321,7 @@ pub const Effect = union(enum) {
 pub const Error = struct {
     msg: ArrayList(u8),
 
-    fn new(alloc: *Allocator, comptime fmt: []const u8, args: anytype) Error {
+    fn new(alloc: Allocator, comptime fmt: []const u8, args: anytype) Error {
         var buf = ArrayList(u8).init(alloc);
         // if there's an error trying to make error msg, just exit
         buf.writer().print(fmt, args) catch unreachable;

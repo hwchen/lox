@@ -22,7 +22,7 @@ const Writer = std.io.Writer;
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    var alloc = &gpa.allocator;
+    var alloc = gpa.allocator();
 
     const params = comptime [_]clap.Param(clap.Help){
         clap.parseParam("-h, --help             Display this help and exit.              ") catch unreachable,
@@ -57,7 +57,7 @@ pub fn main() anyerror!void {
 
 /// Lox is main entry point, and holds state for a session
 const Lox = struct {
-    fn runFile(self: *Lox, alloc: *Allocator, path: []const u8) !void {
+    fn runFile(self: *Lox, alloc: Allocator, path: []const u8) !void {
         _ = self;
         const file = try std.fs.cwd().openFile(path, .{ .read = true });
         defer file.close();
@@ -69,7 +69,7 @@ const Lox = struct {
         try self.run(alloc, source);
     }
 
-    fn runPrompt(self: *Lox, alloc: *Allocator) !void {
+    fn runPrompt(self: *Lox, alloc: Allocator) !void {
         _ = self;
         var buf: [1024]u8 = undefined;
         var stdin = io.getStdIn().reader();
@@ -87,7 +87,7 @@ const Lox = struct {
         }
     }
 
-    fn run(self: *Lox, alloc: *Allocator, source: []const u8) !void {
+    fn run(self: *Lox, alloc: Allocator, source: []const u8) !void {
         _ = self;
         var scanner = Scanner{ .alloc = alloc, .source = source };
 

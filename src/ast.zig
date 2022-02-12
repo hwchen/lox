@@ -38,7 +38,7 @@ pub const NodeList = std.MultiArrayList(Node);
 pub const TokenList = []const Token;
 
 pub const Tree = struct {
-    alloc: *Allocator,
+    alloc: Allocator,
     source: []const u8,
     tokens: TokenList,
     nodes: NodeList,

@@ -8,7 +8,7 @@ const Token = tok.Token;
 const TokenType = tok.TokenType;
 
 pub const Scanner = struct {
-    alloc: *Allocator,
+    alloc: Allocator,
     source: []const u8,
     start: u32 = 0,
     curr: u32 = 0,

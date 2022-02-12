@@ -17,7 +17,7 @@ const Scope = struct {
 
     const Self = @This();
 
-    fn init(alloc: *Allocator, block_ref: Node.Index) Self {
+    fn init(alloc: Allocator, block_ref: Node.Index) Self {
         return .{
             .block_ref = block_ref,
             .curr_stmt = 0,
@@ -33,13 +33,13 @@ const Scope = struct {
 /// Global scope should always exist because exit_scope will never allow it.
 /// So other methods don't need to check for underflow
 pub const Environment = struct {
-    alloc: *Allocator,
+    alloc: Allocator,
     /// index [0] is the root scope
     scopes: ArrayList(Scope),
 
     const Self = @This();
 
-    pub fn init(alloc: *Allocator) !Self {
+    pub fn init(alloc: Allocator) !Self {
         var scopes = ArrayList(Scope).init(alloc);
         const global_scope = Scope.init(alloc, 0);
         try scopes.append(global_scope);
