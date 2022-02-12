@@ -1,22 +1,16 @@
 const std = @import("std");
+const Pkg = std.build.Pkg;
+const FileSource = std.build.FileSource;
+
 pub const pkgs = struct {
-    pub const clap = std.build.Pkg{
+    pub const clap = Pkg{
         .name = "clap",
-        .path = .{ .path = ".gyro/zig-clap-Hejsil-c5fb22823a9a4a699acaefc1e9febfee0b8e506c/pkg/clap.zig" },
+        .path = FileSource{
+            .path = ".gyro/zig-clap-Hejsil-github.com-c5fb2282/pkg/clap.zig",
+        },
     };
 
     pub fn addAllTo(artifact: *std.build.LibExeObjStep) void {
-        @setEvalBranchQuota(1_000_000);
-        inline for (std.meta.declarations(pkgs)) |decl| {
-            if (decl.is_pub and decl.data == .Var) {
-                artifact.addPackage(@field(pkgs, decl.name));
-            }
-        }
+        artifact.addPackage(pkgs.clap);
     }
-};
-
-pub const exports = struct {
-};
-pub const base_dirs = struct {
-    pub const clap = ".gyro/zig-clap-Hejsil-c5fb22823a9a4a699acaefc1e9febfee0b8e506c/pkg";
 };
