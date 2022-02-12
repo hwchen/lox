@@ -1,8 +1,6 @@
 deps:
   clap:
-    root: clap.zig
-    src:
-      github:
-        user: Hejsil
-        repo: zig-clap
-        ref: zig-master
+    git:
+      url: "https://github.com/Hejsil/zig-clap.git"
+      ref: zig-master
+      root: clap.zig
