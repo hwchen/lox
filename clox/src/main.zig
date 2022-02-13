@@ -6,6 +6,9 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const Writer = std.io.Writer;
 
+const vm = @import("./vm.zig");
+const Chunk = vm.Chunk;
+
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -77,8 +80,11 @@ const Lox = struct {
 
     fn run(self: *Lox, alloc: Allocator, source: []const u8) !void {
         _ = self;
-        _ = alloc;
         _ = source;
         std.debug.print("Nothing here yet\n", .{});
+
+        var chunk = Chunk.init(alloc);
+        defer chunk.deinit();
+        try chunk.append(.op_return);
     }
 };
