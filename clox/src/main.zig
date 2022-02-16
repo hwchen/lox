@@ -81,10 +81,11 @@ const Lox = struct {
     fn run(self: *Lox, alloc: Allocator, source: []const u8) !void {
         _ = self;
         _ = source;
-        std.debug.print("Nothing here yet\n", .{});
 
         var chunk = Chunk.init(alloc);
         defer chunk.deinit();
-        try chunk.append(.op_return);
+        try chunk.append_opcode(.op_return);
+        try chunk.append_opcode(.op_return);
+        chunk.disassemble("test");
     }
 };
