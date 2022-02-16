@@ -87,6 +87,7 @@ const Lox = struct {
         defer chunk.deinit();
         try chunk.writeConstant(1.2, 123);
         try chunk.writeOpCode(.op_return, 123);
-        chunk.disassemble("test");
+        std.debug.print("== test chunk ==\n", .{});
+        std.debug.print("{}", .{chunk});
     }
 };

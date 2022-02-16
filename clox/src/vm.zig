@@ -54,10 +54,7 @@ pub const Chunk = struct {
         try self.lines.append(line);
     }
 
-    pub fn disassemble(self: Self, name: []const u8) void {
-        std.debug.print("== {s} chunk ==\n{any}", .{ name, self });
-    }
-
+    // disassembly debug output
     pub fn format(self: Self, comptime fmt: []const u8, options: std.fmt.FormatOptions, out_stream: anytype) !void {
         _ = fmt;
         _ = options;
