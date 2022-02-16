@@ -8,6 +8,7 @@ const Writer = std.io.Writer;
 
 const vm = @import("./vm.zig");
 const Chunk = vm.Chunk;
+const Value = vm.Value;
 
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -84,8 +85,9 @@ const Lox = struct {
 
         var chunk = Chunk.init(alloc);
         defer chunk.deinit();
-        try chunk.append_opcode(.op_return);
-        try chunk.append_opcode(.op_return);
+        try chunk.writeOpCode(.op_return);
+        try chunk.writeConstant(0.1);
+        try chunk.writeOpCode(.op_return);
         chunk.disassemble("test");
     }
 };
