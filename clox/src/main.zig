@@ -85,9 +85,8 @@ const Lox = struct {
 
         var chunk = Chunk.init(alloc);
         defer chunk.deinit();
-        try chunk.writeOpCode(.op_return);
-        try chunk.writeConstant(0.1);
-        try chunk.writeOpCode(.op_return);
+        try chunk.writeConstant(1.2, 123);
+        try chunk.writeOpCode(.op_return, 123);
         chunk.disassemble("test");
     }
 };
