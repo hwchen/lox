@@ -6,9 +6,9 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const Writer = std.io.Writer;
 
-const vm = @import("./vm.zig");
-const Chunk = vm.Chunk;
-const Value = vm.Value;
+const bytecode = @import("./bytecode.zig");
+const Chunk = bytecode.Chunk;
+const Value = bytecode.Value;
 
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
